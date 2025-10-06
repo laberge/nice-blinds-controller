@@ -30,12 +30,29 @@ async def async_setup_entry(
     device_id = config_entry.data.get("device_id")
     protocol_type = config_entry.data.get("protocol_type", "rf433")
     gpio_pin = config_entry.data.get("gpio_pin", 17)
+    move_time = config_entry.data.get("move_time", 30)
+
+    # Build HTTP config if protocol is HTTP
+    http_config = None
+    if protocol_type == "http":
+        http_config = {
+            "base_url": config_entry.data.get("http_base_url"),
+            "open_endpoint": config_entry.data.get("http_open_endpoint", "/open"),
+            "close_endpoint": config_entry.data.get("http_close_endpoint", "/close"),
+            "stop_endpoint": config_entry.data.get("http_stop_endpoint", "/stop"),
+            "username": config_entry.data.get("http_username"),
+            "password": config_entry.data.get("http_password"),
+            "timeout": config_entry.data.get("http_timeout", 10),
+        }
 
     # Initialize Nice controller
-    controller = NiceController(protocol_type=protocol_type, gpio_pin=gpio_pin)
+    controller = NiceController(
+        protocol_type=protocol_type, gpio_pin=gpio_pin, http_config=http_config
+    )
 
     async_add_entities(
-        [BlindsCover(name, config_entry.entry_id, controller, device_id)], True
+        [BlindsCover(name, config_entry.entry_id, controller, device_id, move_time)],
+        True,
     )
 
 
@@ -51,7 +68,12 @@ class BlindsCover(CoverEntity):
     )
 
     def __init__(
-        self, name: str, unique_id: str, controller: NiceController, device_id: str | None
+        self,
+        name: str,
+        unique_id: str,
+        controller: NiceController,
+        device_id: str | None,
+        move_time: int = 30,
     ) -> None:
         """Initialize the blind."""
         self._attr_name = name
@@ -61,7 +83,7 @@ class BlindsCover(CoverEntity):
         self._position = 0
         self._is_opening = False
         self._is_closing = False
-        self._move_time = 30  # Estimated time to fully open/close in seconds
+        self._move_time = move_time  # Estimated time to fully open/close in seconds
 
     @property
     def current_cover_position(self) -> int | None:

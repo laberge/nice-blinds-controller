@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "documentation": "https://github.com/laberge/nice-blinds-controller",
   "issue_tracker": "https://github.com/laberge/nice-blinds-controller/issues",
-  "requirements": ["rpi-rf==0.9.7"],
+  "requirements": ["rpi-rf==0.9.7", "beautifulsoup4==4.12.3", "aiohttp"],
   "codeowners": ["@laberge"],
   "config_flow": true,
   "iot_class": "local_push"
