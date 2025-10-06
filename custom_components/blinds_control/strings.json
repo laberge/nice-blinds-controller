@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Nice Blinds Control",
+        "description": "Configure your Nice protocol blinds. For RF433, you'll need an RF transmitter connected to your Raspberry Pi.",
+        "data": {
+          "name": "Blind Name",
+          "protocol_type": "Nice Protocol Type",
+          "device_id": "Device ID (optional - for RF codes)",
+          "gpio_pin": "GPIO Pin (for RF433 transmitter)",
+          "move_time": "Full Movement Time (seconds)"
+        },
+        "data_description": {
+          "name": "A friendly name for your blinds",
+          "protocol_type": "Select rf433 for RF-controlled blinds or bidi_bus for BiDi-Bus",
+          "device_id": "The RF code or device identifier (leave empty to configure later)",
+          "gpio_pin": "GPIO pin number where RF transmitter is connected (default: 17)",
+          "move_time": "Time it takes for blinds to fully open/close in seconds (default: 30)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the blinds controller",
+      "invalid_gpio_pin": "Invalid GPIO pin (must be between 1 and 27)",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This blind is already configured"
+    }
+  }
+}
