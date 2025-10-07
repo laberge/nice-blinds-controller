@@ -124,6 +124,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle device selection."""
         if user_input is not None:
             selected_devices = user_input.get("devices", [])
+            move_time = user_input.get("move_time", 30)
 
             if not selected_devices:
                 return self.async_show_form(
@@ -132,31 +133,33 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors={"devices": "select_at_least_one"},
                 )
 
-            # Create entries for each selected device
+            # Get device details for selected devices
+            devices_data = []
             for device_id in selected_devices:
                 device = next(
                     (d for d in self._discovered_devices if d["id"] == device_id), None
                 )
                 if device:
-                    entry_data = {
-                        "protocol_type": "http",
-                        "device_id": device["id"],
-                        "name": device["name"],
-                        "http_base_url": self._http_config["base_url"],
-                        "http_username": self._http_config["username"],
-                        "http_password": self._http_config["password"],
-                        "http_timeout": self._http_config["timeout"],
-                        "move_time": 30,
-                    }
+                    devices_data.append(device)
 
-                    await self.async_set_unique_id(f"nice_{device['id']}")
-                    self._abort_if_unique_id_configured()
+            # Create single entry with all selected devices
+            entry_data = {
+                "protocol_type": "http",
+                "http_base_url": self._http_config["base_url"],
+                "http_username": self._http_config["username"],
+                "http_password": self._http_config["password"],
+                "http_timeout": self._http_config["timeout"],
+                "move_time": move_time,
+                "devices": devices_data,  # Store all devices in one entry
+            }
 
-                    self.async_create_entry(title=device["name"], data=entry_data)
+            # Use controller URL as unique ID
+            await self.async_set_unique_id(f"nice_controller_{self._http_config['base_url']}")
+            self._abort_if_unique_id_configured()
 
             return self.async_create_entry(
                 title=f"Nice Controller ({len(selected_devices)} devices)",
-                data={"configured": True},
+                data=entry_data,
             )
 
         return self.async_show_form(

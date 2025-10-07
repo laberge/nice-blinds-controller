@@ -26,8 +26,6 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Blinds Control cover platform."""
-    name = config_entry.data.get("name", "Smart Blinds")
-    device_id = config_entry.data.get("device_id")
     protocol_type = config_entry.data.get("protocol_type", "rf433")
     gpio_pin = config_entry.data.get("gpio_pin", 17)
     move_time = config_entry.data.get("move_time", 30)
@@ -50,10 +48,36 @@ async def async_setup_entry(
         protocol_type=protocol_type, gpio_pin=gpio_pin, http_config=http_config
     )
 
-    async_add_entities(
-        [BlindsCover(name, config_entry.entry_id, controller, device_id, move_time)],
-        True,
-    )
+    # Create cover entities
+    entities = []
+
+    # Check if this is a multi-device HTTP entry
+    devices = config_entry.data.get("devices")
+    if devices:
+        # HTTP controller with multiple devices
+        for device in devices:
+            entity = BlindsCover(
+                name=device["name"],
+                unique_id=f"{config_entry.entry_id}_{device['id']}",
+                controller=controller,
+                device_id=device["id"],
+                move_time=move_time,
+            )
+            entities.append(entity)
+    else:
+        # Single device (RF433 or legacy single HTTP device)
+        name = config_entry.data.get("name", "Smart Blinds")
+        device_id = config_entry.data.get("device_id")
+        entity = BlindsCover(
+            name=name,
+            unique_id=config_entry.entry_id,
+            controller=controller,
+            device_id=device_id,
+            move_time=move_time,
+        )
+        entities.append(entity)
+
+    async_add_entities(entities, True)
 
 
 class BlindsCover(CoverEntity):
