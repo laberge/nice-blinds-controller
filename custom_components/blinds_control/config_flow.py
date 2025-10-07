@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -88,9 +89,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     else:
                         return await self.async_step_select_devices()
 
-                except Exception as err:
+                except aiohttp.ClientResponseError as err:
+                    _LOGGER.error("HTTP error from controller: %s (status: %s)", err, err.status)
+                    if err.status == 401:
+                        errors["base"] = "invalid_auth"
+                    else:
+                        errors["base"] = "cannot_connect"
+                except (aiohttp.ClientError, TimeoutError) as err:
                     _LOGGER.error("Failed to connect to controller: %s", err)
                     errors["base"] = "cannot_connect"
+                except Exception as err:
+                    _LOGGER.error("Unexpected error during setup: %s", err, exc_info=True)
+                    errors["base"] = "unknown"
 
         return self.async_show_form(
             step_id="http_connection",

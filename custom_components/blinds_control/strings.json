@@ -41,7 +41,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the controller. Check the URL, username, and password.",
+      "cannot_connect": "Failed to connect to the controller. Check the URL and network connection.",
+      "invalid_auth": "Authentication failed. Check your username and password.",
       "invalid_url": "Invalid URL. Must start with http:// or https://",
       "invalid_gpio_pin": "Invalid GPIO pin (must be between 1 and 27)",
       "no_devices_found": "No devices found on the controller. Check your controller configuration.",

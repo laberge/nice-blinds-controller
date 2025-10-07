@@ -324,10 +324,10 @@ class NiceController:
 
         except aiohttp.ClientError as err:
             _LOGGER.error("HTTP error while discovering devices: %s", err)
-            return []
+            raise
         except Exception as err:
             _LOGGER.error("Failed to discover devices: %s", err, exc_info=True)
-            return []
+            raise
 
     async def cleanup(self) -> None:
         """Clean up resources."""
