@@ -2,13 +2,13 @@
   "config": {
     "step": {
       "user": {
-        "title": "Choose Protocol Type",
-        "description": "Select how you want to control your Nice blinds",
+        "title": "Nice Blinds Controller Setup",
+        "description": "Configure your Nice blinds controller via HTTP",
         "data": {
           "protocol_type": "Protocol Type"
         },
         "data_description": {
-          "protocol_type": "HTTP for network controllers, RF433 for RF transmitters"
+          "protocol_type": "Connect to your Nice network controller"
         }
       },
       "http_connection": {
@@ -37,22 +37,6 @@
         "data_description": {
           "devices": "Select one or more devices to control",
           "move_time": "Time it takes for blinds to fully open/close"
-        }
-      },
-      "rf433": {
-        "title": "Configure RF433 Blinds",
-        "description": "Configure your RF433-controlled blinds",
-        "data": {
-          "name": "Blind Name",
-          "device_id": "Device ID (optional)",
-          "gpio_pin": "GPIO Pin",
-          "move_time": "Full Movement Time (seconds)"
-        },
-        "data_description": {
-          "name": "A friendly name for your blinds",
-          "device_id": "The RF code or device identifier",
-          "gpio_pin": "GPIO pin number where RF transmitter is connected",
-          "move_time": "Time it takes for blinds to fully open/close in seconds"
         }
       }
     },

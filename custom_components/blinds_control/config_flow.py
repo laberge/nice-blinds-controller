@@ -16,9 +16,9 @@ from .nice_protocol import NiceController
 
 _LOGGER = logging.getLogger(__name__)
 
-PROTOCOL_TYPES = ["rf433", "bidi_bus", "http"]
+PROTOCOL_TYPES = {"http": "HTTP"}
 
-# Step 1: Choose protocol type
+# Step 1: Choose protocol type (HTTP only for now)
 STEP_PROTOCOL_SCHEMA = vol.Schema(
     {
         vol.Required("protocol_type", default="http"): vol.In(PROTOCOL_TYPES),
@@ -35,15 +35,6 @@ STEP_HTTP_CONNECTION_SCHEMA = vol.Schema(
     }
 )
 
-# Step 2b: RF433 settings
-STEP_RF433_SCHEMA = vol.Schema(
-    {
-        vol.Required("name", default="Smart Blinds"): cv.string,
-        vol.Optional("device_id"): cv.string,
-        vol.Optional("gpio_pin", default=17): cv.positive_int,
-        vol.Optional("move_time", default=30): cv.positive_int,
-    }
-)
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -60,21 +51,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step - choose protocol."""
-        if user_input is not None:
-            self._protocol_type = user_input["protocol_type"]
-
-            if self._protocol_type == "http":
-                return await self.async_step_http_connection()
-            elif self._protocol_type == "rf433":
-                return await self.async_step_rf433()
-            else:
-                # BiDi-Bus or other protocols
-                return self.async_abort(reason="protocol_not_implemented")
-
-        return self.async_show_form(
-            step_id="user", data_schema=STEP_PROTOCOL_SCHEMA
-        )
+        """Handle the initial step - go directly to HTTP connection."""
+        # Only HTTP is supported, skip protocol selection
+        self._protocol_type = "http"
+        return await self.async_step_http_connection()
 
     async def async_step_http_connection(
         self, user_input: dict[str, Any] | None = None
@@ -181,33 +161,3 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
-    async def async_step_rf433(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle RF433 configuration."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            name = user_input.get("name", "Smart Blinds")
-            gpio_pin = user_input.get("gpio_pin", 17)
-
-            if not 1 <= gpio_pin <= 27:
-                errors["gpio_pin"] = "invalid_gpio_pin"
-
-            if not errors:
-                await self.async_set_unique_id(f"blinds_{name.lower().replace(' ', '_')}")
-                self._abort_if_unique_id_configured()
-
-                entry_data = {
-                    "protocol_type": "rf433",
-                    "name": name,
-                    "device_id": user_input.get("device_id"),
-                    "gpio_pin": gpio_pin,
-                    "move_time": user_input.get("move_time", 30),
-                }
-
-                return self.async_create_entry(title=name, data=entry_data)
-
-        return self.async_show_form(
-            step_id="rf433", data_schema=STEP_RF433_SCHEMA, errors=errors
-        )
