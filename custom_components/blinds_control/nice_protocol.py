@@ -263,16 +263,27 @@ class NiceController:
         auth = None
         username = self.http_config.get("username")
         password = self.http_config.get("password")
+        _LOGGER.info("HTTP config: base_url=%s, username=%s, password=%s",
+                     self.http_config.get("base_url"),
+                     username,
+                     "***" if password else None)
         if username and password:
             auth = aiohttp.BasicAuth(username, password)
+            _LOGGER.info("BasicAuth configured for user: %s", username)
+        else:
+            _LOGGER.warning("No authentication configured! username=%s, password=%s", username, "***" if password else None)
 
         try:
-            _LOGGER.info("Fetching device list from: %s", url)
+            _LOGGER.info("Fetching device list from: %s (with auth: %s)", url, auth is not None)
             async with self._http_session.get(url, auth=auth) as response:
                 _LOGGER.info("HTTP Response status: %s", response.status)
+                if response.status == 401:
+                    _LOGGER.error("Authentication failed (401 Unauthorized) - check username/password")
+                    return []
                 response.raise_for_status()
                 html = await response.text()
-                _LOGGER.debug("HTML response length: %d bytes", len(html))
+                _LOGGER.info("HTML response length: %d bytes", len(html))
+                _LOGGER.debug("First 500 chars of HTML: %s", html[:500])
 
                 # Parse HTML to extract device information
                 soup = BeautifulSoup(html, "html.parser")
