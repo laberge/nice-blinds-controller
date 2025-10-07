@@ -45,6 +45,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize config flow."""
+        _LOGGER.info("=== Config flow __init__ called ===")
         self._protocol_type: str | None = None
         self._http_config: dict[str, Any] = {}
         self._discovered_devices: list[dict[str, str]] = []
@@ -53,6 +54,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step - go directly to HTTP connection."""
+        _LOGGER.info("=== async_step_user called with input: %s ===", user_input)
         # Only HTTP is supported, skip protocol selection
         self._protocol_type = "http"
         return await self.async_step_http_connection()
@@ -61,6 +63,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle HTTP connection configuration."""
+        _LOGGER.info("=== async_step_http_connection called with input: %s ===", user_input)
         errors: dict[str, str] = {}
 
         if user_input is not None:
