@@ -1,27 +1,27 @@
 # Nice Blinds Controller - Home Assistant Custom Integration
 
-A Home Assistant custom integration for controlling blinds using the Nice protocol. Supports both RF 433MHz and BiDi-Bus communication methods.
+A Home Assistant custom integration for controlling Nice blinds and motors. Supports HTTP/network controllers, RF 433MHz, and BiDi-Bus communication methods.
 
 ## Features
 
-- **Nice Protocol Support**: RF 433MHz and BiDi-Bus protocols
+- **HTTP Controller Support**: Connect to Nice network/HTTP controllers with automatic device discovery
+- **Multiple Protocol Support**: HTTP, RF 433MHz, and BiDi-Bus protocols
+- **Automatic Device Discovery**: Finds all devices from your Nice controller
 - **Full Control**: Open, close, stop, and position control (0-100%)
 - **UI Configuration**: Easy setup through Home Assistant interface
-- **Raspberry Pi Compatible**: Uses GPIO pins for RF transmission
 - **Position Tracking**: Automatic position estimation based on movement time
 
 ## Requirements
 
-### Hardware
-- **Raspberry Pi** (or compatible device) running Home Assistant
-- **RF 433MHz Transmitter** (for RF protocol) - connected to GPIO pin
-  - Recommended: FS1000A or similar 433MHz transmitter module
-- **Nice-compatible blinds motor** (Nice Era, Nice Inti, or similar)
-
-### Software
+### For HTTP Controllers (Recommended)
 - Home Assistant (tested on 2024.1+)
-- Python 3.11+
-- `rpi-rf` library (automatically installed)
+- Nice HTTP/network controller (e.g., IT4WiFi, MyNice, or compatible)
+- Network access to your Nice controller
+
+### For RF 433MHz (Alternative)
+- Raspberry Pi (or compatible device) running Home Assistant
+- RF 433MHz Transmitter connected to GPIO pin
+- Nice-compatible blinds motor (Nice Era, Nice Inti, or similar)
 
 ## Installation
 
@@ -41,9 +41,50 @@ A Home Assistant custom integration for controlling blinds using the Nice protoc
 1. Copy the `custom_components/blinds_control` directory to your Home Assistant `config/custom_components/` directory
 2. Restart Home Assistant
 
-## Hardware Setup
+## Configuration
 
-### RF 433MHz Transmitter Wiring
+### Method 1: HTTP Controller (Recommended)
+
+This method works with Nice network controllers that provide an HTTP interface for device control.
+
+#### Setup Steps
+
+1. Go to **Settings** → **Devices & Services**
+2. Click **+ Add Integration**
+3. Search for "Nice Blinds Controller"
+4. Select **HTTP** as the protocol type
+5. Enter your controller details:
+   - **Base URL**: Your controller's IP address (e.g., `http://192.168.1.100`)
+   - **Username**: Controller username (default: `admin`)
+   - **Password**: Controller password
+   - **Timeout**: Request timeout in seconds (default: 10)
+6. Click **Submit**
+7. The integration will automatically discover all connected devices
+8. **Select devices** you want to add to Home Assistant
+9. Click **Submit** to complete setup
+
+#### Supported Controllers
+
+This integration works with Nice controllers that use the following API format:
+```
+http://controller-ip/cgi/devcmd.xml?adr=1&ept=0F&cmd=03
+```
+
+Command codes:
+- `cmd=02` - Stop
+- `cmd=03` - Open/Up
+- `cmd=04` - Close/Down
+
+Compatible with:
+- Nice IT4WiFi
+- Nice MyNice controllers
+- Other Nice network controllers with HTTP API
+
+### Method 2: RF 433MHz (Advanced)
+
+This method requires a Raspberry Pi with an RF transmitter module.
+
+#### Hardware Setup
 
 Connect your RF transmitter to the Raspberry Pi:
 - **VCC** → 5V (Pin 2)
@@ -57,23 +98,19 @@ RF Transmitter        Raspberry Pi
     DATA ----------→  GPIO 17 (Pin 11)
 ```
 
-## Configuration
-
-### Initial Setup
+#### Configuration Steps
 
 1. Go to **Settings** → **Devices & Services**
 2. Click **+ Add Integration**
 3. Search for "Nice Blinds Controller"
-4. Configure the following:
-   - **Blind Name**: Friendly name for your blinds (e.g., "Living Room Blinds")
-   - **Protocol Type**:
-     - `rf433` - For RF 433MHz control
-     - `bidi_bus` - For BiDi-Bus (experimental)
-   - **Device ID**: RF code for your blind (optional, can configure later)
+4. Select **RF433** as the protocol type
+5. Configure:
+   - **Blind Name**: Friendly name for your blinds
+   - **Device ID**: RF code for your blind (optional)
    - **GPIO Pin**: GPIO pin number for RF transmitter (default: 17)
    - **Move Time**: Time in seconds for full open/close (default: 30)
 
-### Learning RF Codes
+#### Learning RF Codes
 
 To capture RF codes from your existing Nice remote:
 
@@ -83,52 +120,13 @@ To capture RF codes from your existing Nice remote:
    rpi-rf_receive -g 27
    ```
 3. Press buttons on your Nice remote and note the codes
-4. Update the codes in `nice_protocol.py`:
-   ```python
-   command_codes = {
-       "open": 1234567,    # Your captured code
-       "close": 7654321,   # Your captured code
-       "stop": 1111111,    # Your captured code
-   }
-   ```
-
-## Advanced Configuration
-
-### Customizing RF Codes
-
-Edit `custom_components/blinds_control/nice_protocol.py` and update the `command_codes` dictionary:
-
-```python
-command_codes = {
-    "open": 1234567,    # Replace with your captured code
-    "close": 7654321,   # Replace with your captured code
-    "stop": 1111111,    # Replace with your captured code
-}
-```
-
-### Multiple Blinds
-
-To control multiple blinds, add the integration multiple times with different:
-- Names
-- Device IDs (RF codes)
-- GPIO pins (if using multiple transmitters)
-
-### BiDi-Bus Protocol (Experimental)
-
-The BiDi-Bus protocol support is experimental and requires additional implementation in `nice_protocol.py`. This is suitable for Nice systems with Bus-T4 connectors and BiDi-WiFi modules.
-
-### Adjusting Movement Time
-
-If position tracking is inaccurate:
-1. Measure the actual time for full open/close
-2. Update the **Move Time** setting during configuration
-3. Or modify `_move_time` in the entity settings
+4. Update the codes in `nice_protocol.py`
 
 ## Usage
 
-Once configured, your blinds will appear as a cover entity in Home Assistant. You can:
+Once configured, your blinds will appear as cover entities in Home Assistant. You can:
 
-- **Lovelace UI**: Control from the dashboard with open/close/stop buttons and position slider
+- **Dashboard Control**: Use open/close/stop buttons and position slider
 - **Automations**: Trigger based on time, sun position, or other events
 - **Voice Control**: Use with Alexa, Google Home, or Siri
 - **Scenes & Scripts**: Include in complex automation scenarios
@@ -180,28 +178,58 @@ automation:
 
 ## Troubleshooting
 
-### Blinds not responding
+### HTTP Controller Issues
+
+**Integration not found:**
+- Restart Home Assistant after installation
+- Clear browser cache (Ctrl+Shift+R or Cmd+Shift+R)
+- Check logs: Settings → System → Logs
+
+**Cannot connect to controller:**
+- Verify controller IP address and network connectivity
+- Check username and password
+- Ensure controller's web interface is accessible from Home Assistant
+
+**No devices found:**
+- Verify devices are configured in your Nice controller
+- Check controller's device list page is accessible
+- Review Home Assistant logs for parsing errors
+
+### RF433 Issues
+
+**Blinds not responding:**
 - Check RF transmitter wiring
 - Verify GPIO pin configuration
 - Ensure RF codes are correctly captured
 - Check Home Assistant logs for errors
 
-### Position tracking is off
-- Adjust the `move_time` parameter to match your blinds' actual movement time
-- Test with full open/close cycles
-
-### Permission denied on GPIO
+**Permission denied on GPIO:**
 - Ensure Home Assistant has permission to access GPIO pins
 - Add the user to the `gpio` group: `sudo usermod -a -G gpio homeassistant`
+
+### Position Tracking Issues
+
+If position tracking is inaccurate:
+1. Measure the actual time for full open/close
+2. Adjust the **Move Time** setting during configuration
+3. Test with full open/close cycles
+
+## Advanced Configuration
+
+### Multiple Controllers
+
+You can add multiple controllers by adding the integration multiple times. Each instance will discover and manage its own set of devices.
+
+### Adjusting Movement Time
+
+The **Move Time** parameter controls how long the integration waits for a full open/close operation. Adjust this to match your blinds' actual movement time for accurate position tracking.
 
 ## Nice Protocol Information
 
 The Nice protocol is proprietary and varies by device type:
-- **RF 433MHz**: Common for older Nice motors (Era, Inti series)
-- **BiDi-Bus**: Used in newer systems with bidirectional communication
-- **Frequency**: Typically 433.92 MHz for RF variants
-
-This integration currently focuses on RF transmission. For BiDi-Bus, additional protocol implementation is needed.
+- **HTTP/Network**: Modern Nice controllers with web interface and network API
+- **RF 433MHz**: Older Nice motors (Era, Inti series) using 433.92 MHz frequency
+- **BiDi-Bus**: Newer systems with bidirectional communication (experimental support)
 
 ## Support
 
@@ -210,8 +238,8 @@ For issues and feature requests, please visit the [GitHub Issues](https://github
 ## Contributing
 
 Contributions are welcome! Especially:
+- Additional Nice controller protocol support
 - BiDi-Bus protocol implementation
-- Additional Nice protocol variants
 - Code improvements and bug fixes
 
 ## License
