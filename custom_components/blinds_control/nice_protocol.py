@@ -267,21 +267,26 @@ class NiceController:
             auth = aiohttp.BasicAuth(username, password)
 
         try:
-            _LOGGER.debug("Fetching device list from: %s", url)
+            _LOGGER.info("Fetching device list from: %s", url)
             async with self._http_session.get(url, auth=auth) as response:
+                _LOGGER.info("HTTP Response status: %s", response.status)
                 response.raise_for_status()
                 html = await response.text()
+                _LOGGER.debug("HTML response length: %d bytes", len(html))
 
                 # Parse HTML to extract device information
                 soup = BeautifulSoup(html, "html.parser")
                 devices = []
 
                 # Find all table rows with device data
+                rows_found = 0
                 for row in soup.find_all("tr"):
                     cells = row.find_all("td")
+                    rows_found += 1
                     if len(cells) >= 2:
                         module_text = cells[0].get_text(strip=True)
                         description = cells[1].get_text(strip=True)
+                        _LOGGER.debug("Checking row: module='%s', desc='%s'", module_text, description)
 
                         # Parse module format: "EI SM (1,1)" -> adr=1, ept=01
                         match = re.match(r"EI SM \((\d+),(\d+)\)", module_text)
@@ -298,13 +303,19 @@ class NiceController:
                                 "ept": ept_hex,
                             }
                             devices.append(device)
-                            _LOGGER.debug("Found device: %s", device)
+                            _LOGGER.info("Found device: %s - %s", device["name"], device["id"])
+                        else:
+                            if module_text:
+                                _LOGGER.debug("Row did not match pattern: '%s'", module_text)
 
-                _LOGGER.info("Discovered %d devices", len(devices))
+                _LOGGER.info("Parsed %d table rows, discovered %d devices", rows_found, len(devices))
                 return devices
 
+        except aiohttp.ClientError as err:
+            _LOGGER.error("HTTP error while discovering devices: %s", err)
+            return []
         except Exception as err:
-            _LOGGER.error("Failed to discover devices: %s", err)
+            _LOGGER.error("Failed to discover devices: %s", err, exc_info=True)
             return []
 
     async def cleanup(self) -> None:
