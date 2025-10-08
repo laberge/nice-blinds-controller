@@ -1,0 +1,11 @@
+# Logger configuration for Nice Blinds Controller integration
+#
+# To enable debug logging in Home Assistant, add this to your configuration.yaml:
+#
+# logger:
+#   default: info
+#   logs:
+#     custom_components.blinds_control: debug
+#
+
+# This file is for reference only - Home Assistant uses configuration.yaml for logger settings

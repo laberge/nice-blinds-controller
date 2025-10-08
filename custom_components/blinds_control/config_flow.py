@@ -17,7 +17,7 @@ from .nice_protocol import NiceController
 
 _LOGGER = logging.getLogger(__name__)
 
-_LOGGER.error("========== CONFIG_FLOW MODULE LOADED ==========")
+_LOGGER.debug("Config flow module loaded")
 
 # HTTP connection details
 STEP_HTTP_CONNECTION_SCHEMA = vol.Schema(
@@ -38,7 +38,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize config flow."""
-        _LOGGER.error("========== CONFIG FLOW __INIT__ CALLED ==========")
+        _LOGGER.debug("Config flow initialized")
         self._http_config: dict[str, Any] = {}
         self._discovered_devices: list[dict[str, str]] = []
 
@@ -46,28 +46,25 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step - HTTP connection configuration."""
-        _LOGGER.error("========== ASYNC_STEP_USER CALLED ==========")
-        _LOGGER.error("User input: %s", user_input)
+        _LOGGER.debug("async_step_user called (user_input: %s)", user_input)
         return await self.async_step_http_connection()
 
     async def async_step_http_connection(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle HTTP connection configuration."""
-        _LOGGER.error("========== ASYNC_STEP_HTTP_CONNECTION CALLED ==========")
-        _LOGGER.error("User input: %s", user_input)
+        _LOGGER.debug("async_step_http_connection called (user_input: %s)", user_input)
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            _LOGGER.error("========== PROCESSING USER INPUT ==========")
             # Validate URL format
             base_url = user_input.get("http_base_url", "")
-            _LOGGER.error("Base URL: %s", base_url)
+            _LOGGER.debug("Validating URL: %s", base_url)
             if not base_url.startswith(("http://", "https://")):
-                _LOGGER.error("URL validation failed - invalid URL format")
+                _LOGGER.debug("URL validation failed - invalid format")
                 errors["http_base_url"] = "invalid_url"
             else:
-                _LOGGER.error("URL validation passed, attempting to connect...")
+                _LOGGER.debug("URL validation passed, connecting to controller...")
                 # Try to connect and discover devices
                 self._http_config = {
                     "base_url": base_url,
@@ -77,18 +74,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
 
                 try:
-                    _LOGGER.error("Creating NiceController with config: %s", self._http_config)
+                    _LOGGER.debug("Creating NiceController with config: %s", self._http_config)
                     controller = NiceController(http_config=self._http_config)
-                    _LOGGER.error("Calling discover_devices()...")
+                    _LOGGER.debug("Discovering devices...")
                     self._discovered_devices = await controller.discover_devices()
-                    _LOGGER.error("Discovered %d devices", len(self._discovered_devices))
+                    _LOGGER.info("Discovered %d devices from controller", len(self._discovered_devices))
                     await controller.cleanup()
 
                     if not self._discovered_devices:
-                        _LOGGER.error("No devices found - setting error")
+                        _LOGGER.warning("No devices found on controller")
                         errors["base"] = "no_devices_found"
                     else:
-                        _LOGGER.error("Devices found, proceeding to selection step")
+                        _LOGGER.debug("Proceeding to device selection")
                         return await self.async_step_select_devices()
 
                 except aiohttp.ClientResponseError as err:
