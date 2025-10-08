@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Simple command interface for Nice blinds - use device names directly."""
+
+import asyncio
+import aiohttp
+import sys
+import os
+import xml.etree.ElementTree as ET
+
+# Configuration - Update these with your settings or use environment variables
+CONTROLLER_URL = os.getenv("BLINDS_URL", "http://192.168.10.235")
+USERNAME = os.getenv("BLINDS_USER", "aaron")
+PASSWORD = os.getenv("BLINDS_PASS", "")  # Set BLINDS_PASS env var or edit here
+
+
+async def get_devices(base_url: str, username: str, password: str):
+    """Get all devices from the controller."""
+    url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
+    
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        auth = aiohttp.BasicAuth(username, password) if username and password else None
+        
+        async with session.get(url, auth=auth) as response:
+            response.raise_for_status()
+            xml_content = await response.text()
+            
+            root = ET.fromstring(xml_content)
+            device_elements = root.findall('.//device')
+            
+            devices = {}
+            for device_elem in device_elements:
+                installed = device_elem.get('installed', '0')
+                if installed != '1':
+                    continue
+                
+                adr = device_elem.get('adr', '0')
+                ept = device_elem.get('ept', '0')
+                desc = device_elem.get('desc', '')
+                
+                adr_dec = int(adr, 16)
+                device_id = f"{adr_dec},{ept}"
+                
+                # Store by name (case-insensitive)
+                devices[desc.lower()] = device_id
+            
+            return devices
+
+
+async def send_command(base_url: str, username: str, password: str, device_id: str, command: str):
+    """Send a command to a Nice blind."""
+    parts = device_id.split(",")
+    adr = parts[0]
+    ept = parts[1]
+    
+    cmd_codes = {"stop": "02", "open": "03", "close": "04"}
+    cmd = cmd_codes.get(command.lower())
+    
+    url = f"{base_url.rstrip('/')}/cgi/devcmd.xml?adr={adr}&ept={ept}&cmd={cmd}"
+    
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        auth = aiohttp.BasicAuth(username, password) if username and password else None
+        
+        async with session.get(url, auth=auth) as response:
+            response.raise_for_status()
+            return True
+
+
+async def main_async(command: str, device_name: str, config_url: str, config_user: str, config_pass: str):
+    """Main async function."""
+    try:
+        # Get all devices
+        devices = await get_devices(config_url, config_user, config_pass)
+        
+        # Find device by name (case-insensitive)
+        device_name_lower = device_name.lower()
+        if device_name_lower not in devices:
+            print(f"✗ Error: Device '{device_name}' not found")
+            print(f"\nAvailable devices:")
+            for name in sorted(devices.keys()):
+                print(f"  - {name.title()}")
+            return False
+        
+        device_id = devices[device_name_lower]
+        
+        # Send command
+        await send_command(config_url, config_user, config_pass, device_id, command)
+        
+        # Success message
+        print(f"✓ {command.upper()}: {device_name.title()}")
+        return True
+        
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        return False
+
+
+def print_usage():
+    """Print usage instructions."""
+    print("""
+╔══════════════════════════════════════════════════════════════╗
+║              Nice Blinds - Simple Control                    ║
+╚══════════════════════════════════════════════════════════════╝
+
+Usage:
+  ./blinds <command> "<device_name>"
+
+Commands:
+  open   - Opens the blind
+  close  - Closes the blind
+  stop   - Stops the blind
+  list   - List all devices
+
+Examples:
+  ./blinds open "MBA 3"
+  ./blinds close "Kitchen 1"
+  ./blinds stop "Office 1"
+  ./blinds list
+
+Your Devices:
+  MBA 3, MBA 1, MBR 1, MBR 2, MBR 4
+  Sunroom 1, Sunroom 2, Sunroom 3, Sunroom 4, Sunroom 5
+  Kitchen 1, Kitchen 2
+  Office 1-12
+  Living Room
+
+Configuration:
+  Edit the CONTROLLER_URL, USERNAME, and PASSWORD variables at
+  the top of this script to set your defaults.
+  
+  Current config:
+    URL: {CONTROLLER_URL}
+    User: {USERNAME}
+    Pass: {'(set)' if PASSWORD else '(not set - will prompt)'}
+""".format(CONTROLLER_URL=CONTROLLER_URL, USERNAME=USERNAME, PASSWORD=PASSWORD))
+
+
+async def list_devices_async(config_url: str, config_user: str, config_pass: str):
+    """List all devices."""
+    try:
+        devices = await get_devices(config_url, config_user, config_pass)
+        
+        print(f"\n{'='*60}")
+        print(f"Available Devices ({len(devices)} total)")
+        print(f"{'='*60}\n")
+        
+        for name in sorted(devices.keys()):
+            device_id = devices[name]
+            print(f"  {name.title():20} (ID: {device_id})")
+        
+        print(f"\n{'='*60}\n")
+        
+    except Exception as e:
+        print(f"✗ Error: {e}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print_usage()
+        sys.exit(1)
+    
+    command = sys.argv[1].lower()
+    
+    # Check password is set
+    if not PASSWORD:
+        print("✗ Error: Password not configured")
+        print("\nSet your password using one of these methods:")
+        print("  1. Environment variable: export BLINDS_PASS='your_password'")
+        print("  2. Edit the script and set PASSWORD = 'your_password'")
+        print("  3. Add to your ~/.bashrc or ~/.zshrc:")
+        print("     export BLINDS_PASS='your_password'")
+        sys.exit(1)
+    
+    # Handle list command
+    if command == "list":
+        asyncio.run(list_devices_async(CONTROLLER_URL, USERNAME, PASSWORD))
+        sys.exit(0)
+    
+    # Handle device commands
+    if len(sys.argv) < 3:
+        print_usage()
+        sys.exit(1)
+    
+    device_name = sys.argv[2]
+    
+    if command not in ["open", "close", "stop"]:
+        print(f"✗ Error: Invalid command '{command}'")
+        print("Valid commands: open, close, stop, list")
+        sys.exit(1)
+    
+    success = asyncio.run(main_async(command, device_name, CONTROLLER_URL, USERNAME, PASSWORD))
+    sys.exit(0 if success else 1)
+
