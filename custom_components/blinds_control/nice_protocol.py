@@ -10,6 +10,8 @@ from bs4 import BeautifulSoup
 
 _LOGGER = logging.getLogger(__name__)
 
+_LOGGER.error("========== NICE_PROTOCOL MODULE LOADED ==========")
+
 
 class NiceController:
     """HTTP controller for Nice blind motors."""
@@ -20,11 +22,13 @@ class NiceController:
         Args:
             http_config: HTTP configuration dict with base_url, username, password, timeout
         """
+        _LOGGER.error("========== NiceController.__init__ called ==========")
+        _LOGGER.error("HTTP config: %s", http_config)
         self.http_config = http_config
         self._initialized = False
         self._http_session = None
 
-        _LOGGER.info(
+        _LOGGER.error(
             "Nice HTTP controller initialized with base URL: %s",
             http_config.get("base_url"),
         )
@@ -118,33 +122,41 @@ class NiceController:
         Returns:
             List of device dicts with 'id', 'name', 'module', 'adr', 'ept'
         """
+        _LOGGER.error("========== discover_devices() START ==========")
+        _LOGGER.error("_http_session exists: %s", self._http_session is not None)
+        _LOGGER.error("_initialized: %s", self._initialized)
+
         if not self._http_session:
+            _LOGGER.error("HTTP session not initialized, calling _ensure_initialized()")
             await self._ensure_initialized()
+
+        _LOGGER.error("After ensure_initialized - _http_session exists: %s", self._http_session is not None)
 
         base_url = self.http_config.get("base_url", "")
         url = f"{base_url.rstrip('/')}/dev_list.htm"
+        _LOGGER.error("Constructed URL: %s", url)
 
         auth = None
         username = self.http_config.get("username")
         password = self.http_config.get("password")
-        _LOGGER.info("HTTP config: base_url=%s, username=%s, password=%s",
+        _LOGGER.error("HTTP config: base_url=%s, username=%s, password=%s",
                      self.http_config.get("base_url"),
                      username,
                      "***" if password else None)
         if username and password:
             auth = aiohttp.BasicAuth(username, password)
-            _LOGGER.info("BasicAuth configured for user: %s", username)
+            _LOGGER.error("BasicAuth configured for user: %s", username)
         else:
-            _LOGGER.warning("No authentication configured! username=%s, password=%s", username, "***" if password else None)
+            _LOGGER.error("No authentication configured! username=%s, password=%s", username, "***" if password else None)
 
         try:
-            _LOGGER.info("Fetching device list from: %s (with auth: %s)", url, auth is not None)
+            _LOGGER.error("About to make HTTP GET request to: %s (with auth: %s)", url, auth is not None)
             async with self._http_session.get(url, auth=auth) as response:
-                _LOGGER.info("HTTP Response status: %s", response.status)
+                _LOGGER.error("HTTP Response received! Status: %s", response.status)
                 response.raise_for_status()
                 html = await response.text()
-                _LOGGER.info("HTML response length: %d bytes", len(html))
-                _LOGGER.debug("First 500 chars of HTML: %s", html[:500])
+                _LOGGER.error("HTML response length: %d bytes", len(html))
+                _LOGGER.error("First 500 chars of HTML: %s", html[:500])
 
                 # Parse HTML to extract device information
                 soup = BeautifulSoup(html, "html.parser")
@@ -180,14 +192,15 @@ class NiceController:
                             if module_text:
                                 _LOGGER.debug("Row did not match pattern: '%s'", module_text)
 
-                _LOGGER.info("Parsed %d table rows, discovered %d devices", rows_found, len(devices))
+                _LOGGER.error("Parsed %d table rows, discovered %d devices", rows_found, len(devices))
+                _LOGGER.error("========== discover_devices() END - returning %d devices ==========", len(devices))
                 return devices
 
         except aiohttp.ClientError as err:
-            _LOGGER.error("HTTP error while discovering devices: %s", err)
+            _LOGGER.error("========== ClientError in discover_devices: %s ==========", err)
             raise
         except Exception as err:
-            _LOGGER.error("Failed to discover devices: %s", err, exc_info=True)
+            _LOGGER.error("========== Exception in discover_devices: %s ==========", err, exc_info=True)
             raise
 
     async def cleanup(self) -> None:
