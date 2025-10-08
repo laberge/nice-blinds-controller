@@ -111,6 +111,25 @@ class NiceController:
             _LOGGER.error("Unexpected error sending HTTP command '%s': %s", command, err)
             raise
 
+    async def test_connection(self) -> bool:
+        """Test if the controller is reachable.
+        
+        Returns:
+            True if connection successful, False otherwise
+        """
+        await self._ensure_initialized()
+        
+        base_url = self.http_config.get("base_url", "")
+        _LOGGER.debug("Testing connection to: %s", base_url)
+        
+        try:
+            async with self._http_session.get(base_url) as response:
+                _LOGGER.debug("Connection test response: %d", response.status)
+                return response.status < 500
+        except Exception as err:
+            _LOGGER.error("Connection test failed: %s", err)
+            return False
+
     async def discover_devices(self) -> list[dict[str, str]]:
         """Discover devices from Nice HTTP controller.
 
@@ -125,6 +144,9 @@ class NiceController:
 
         base_url = self.http_config.get("base_url", "")
         url = f"{base_url.rstrip('/')}/dev_list.htm"
+        
+        _LOGGER.debug("Base URL: %s", base_url)
+        _LOGGER.debug("Device list URL: %s", url)
 
         auth = None
         username = self.http_config.get("username")
@@ -137,12 +159,40 @@ class NiceController:
 
         try:
             _LOGGER.debug("Fetching device list from %s", url)
+            _LOGGER.debug("Using authentication: %s", "Yes" if auth else "No")
+            
             async with self._http_session.get(url, auth=auth) as response:
                 _LOGGER.debug("HTTP response received (status: %d)", response.status)
+                _LOGGER.debug("Response headers: %s", dict(response.headers))
+                
+                # Check for authentication/redirect issues before processing
+                if response.status == 401:
+                    _LOGGER.error("Authentication failed (401 Unauthorized)")
+                    raise aiohttp.ClientResponseError(
+                        request_info=response.request_info,
+                        history=response.history,
+                        status=401,
+                        message="Authentication required"
+                    )
+                
                 response.raise_for_status()
                 html = await response.text()
                 _LOGGER.debug("Received %d bytes of HTML", len(html))
-                _LOGGER.debug("HTML preview: %s", html[:200])
+                _LOGGER.debug("HTML preview: %s", html[:500])
+                
+                # Log full HTML for debugging (can be removed later)
+                _LOGGER.debug("Full HTML content:\n%s", html)
+                
+                # Check if we got a login/error page instead of device list
+                html_lower = html.lower()
+                if any(keyword in html_lower for keyword in ['login', 'password', 'authentication', 'unauthorized', 'access denied']):
+                    _LOGGER.error("Received login/auth page instead of device list. Check credentials.")
+                    raise aiohttp.ClientResponseError(
+                        request_info=response.request_info,
+                        history=response.history,
+                        status=401,
+                        message="Authentication failed - received login page"
+                    )
 
                 # Parse HTML to extract device information
                 soup = BeautifulSoup(html, "html.parser")
@@ -159,7 +209,15 @@ class NiceController:
                         _LOGGER.debug("Checking row: module='%s', desc='%s'", module_text, description)
 
                         # Parse module format: "EI SM (1,1)" -> adr=1, ept=01
+                        # Try different patterns to match various controller formats
                         match = re.match(r"EI SM \((\d+),(\d+)\)", module_text)
+                        if not match:
+                            # Try alternative pattern without "EI SM" prefix
+                            match = re.match(r"\((\d+),(\d+)\)", module_text)
+                        if not match:
+                            # Try pattern with different spacing
+                            match = re.match(r"EI\s+SM\s*\((\d+),(\d+)\)", module_text)
+                        
                         if match and description:
                             adr = match.group(1)
                             ept_decimal = int(match.group(2))
