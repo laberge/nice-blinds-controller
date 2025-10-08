@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="custom_components/blinds_control/logo.png" alt="Nice Blinds Controller" width="200"/>
+</p>
+
 # Nice Blinds Controller - Home Assistant Custom Integration
 
 A Home Assistant custom integration for controlling Nice blinds and motors. Supports HTTP/network controllers, RF 433MHz, and BiDi-Bus communication methods.
@@ -11,7 +15,7 @@ A Home Assistant custom integration for controlling Nice blinds and motors. Supp
 - **UI Configuration**: Easy setup through Home Assistant interface
 - **Position Tracking**: Automatic position estimation based on movement time
 - **CLI Tools**: Standalone command-line interface for direct control (see [CLI Tools](#cli-tools-standalone) below)
-
+∏
 ## CLI Tools (Standalone)
 
 Control your blinds directly from the command line without Home Assistant!
