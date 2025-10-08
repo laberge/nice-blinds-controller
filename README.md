@@ -10,6 +10,35 @@ A Home Assistant custom integration for controlling Nice blinds and motors. Supp
 - **Full Control**: Open, close, stop, and position control (0-100%)
 - **UI Configuration**: Easy setup through Home Assistant interface
 - **Position Tracking**: Automatic position estimation based on movement time
+- **CLI Tools**: Standalone command-line interface for direct control (see [CLI Tools](#cli-tools-standalone) below)
+
+## CLI Tools (Standalone)
+
+Control your blinds directly from the command line without Home Assistant!
+
+```bash
+# Simple, friendly device names
+blinds open "MBA 3"
+blinds close "Kitchen 1"
+blinds stop "Office 1"
+blinds list
+```
+
+**Quick Setup:**
+```bash
+./setup_blinds_cli.sh
+```
+
+**Features:**
+- Control blinds using friendly device names
+- Dotfiles integration support
+- Batch operations for multiple blinds
+- Secure password management (environment variables, keychain, password managers)
+
+**Documentation:**
+- [Quick Start Guide](QUICK_START.md) - Get started in 30 seconds
+- [CLI Documentation](BLINDS_CLI_README.md) - Detailed usage and examples
+- [Dotfiles Setup](DOTFILES_SETUP.md) - Integration with your dotfiles workflow
 
 ## Requirements
 

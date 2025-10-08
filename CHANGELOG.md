@@ -5,6 +5,24 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **CLI Tools**: Complete command-line interface for controlling blinds
+  - `blinds` - Main CLI using friendly device names (e.g., `blinds open "MBA 3"`)
+  - `send_command.py` - Standalone command sender using device IDs
+  - `test_commands.py` - Command testing tool
+- **Setup Tools**:
+  - `setup_blinds_cli.sh` - Interactive setup script (zsh-native)
+  - `blinds.zsh` - Dotfiles-ready configuration file
+- **Documentation**:
+  - `QUICK_START.md` - Complete quick start guide
+  - `BLINDS_CLI_README.md` - Detailed CLI documentation
+  - `DOTFILES_SETUP.md` - Dotfiles integration guide with security best practices
+- Support for dotfiles workflows with multiple setup options
+- Password security options (environment variables, keychain, password managers)
+- Per-room batch operations and custom aliases
+
 ## [1.4.0] - 2025-10-08
 
 ### 🎉 FIXED - Device Discovery Now Works!
