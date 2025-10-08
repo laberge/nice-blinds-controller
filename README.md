@@ -178,6 +178,19 @@ automation:
 
 ## Troubleshooting
 
+### Enable Debug Logging
+
+To see detailed debug information during setup and operation, add this to your `configuration.yaml`:
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.blinds_control: debug
+```
+
+Then restart Home Assistant. Debug logs will show HTTP requests, device discovery details, and error information.
+
 ### HTTP Controller Issues
 
 **Integration not found:**
