@@ -1,16 +1,6 @@
 {
   "config": {
     "step": {
-      "user": {
-        "title": "Nice Blinds Controller Setup",
-        "description": "Configure your Nice blinds controller via HTTP",
-        "data": {
-          "protocol_type": "Protocol Type"
-        },
-        "data_description": {
-          "protocol_type": "Connect to your Nice network controller"
-        }
-      },
       "http_connection": {
         "title": "Connect to Nice Controller",
         "description": "Enter your Nice HTTP controller connection details",
@@ -44,14 +34,12 @@
       "cannot_connect": "Failed to connect to the controller. Check the URL and network connection.",
       "invalid_auth": "Authentication failed. Check your username and password.",
       "invalid_url": "Invalid URL. Must start with http:// or https://",
-      "invalid_gpio_pin": "Invalid GPIO pin (must be between 1 and 27)",
       "no_devices_found": "No devices found on the controller. Check your controller configuration.",
       "select_at_least_one": "Please select at least one device",
       "unknown": "Unexpected error occurred"
     },
     "abort": {
-      "already_configured": "This controller is already configured",
-      "protocol_not_implemented": "This protocol type is not yet implemented"
+      "already_configured": "This controller is already configured"
     }
   }
 }

@@ -17,16 +17,7 @@ from .nice_protocol import NiceController
 
 _LOGGER = logging.getLogger(__name__)
 
-PROTOCOL_TYPES = {"http": "HTTP"}
-
-# Step 1: Choose protocol type (HTTP only for now)
-STEP_PROTOCOL_SCHEMA = vol.Schema(
-    {
-        vol.Required("protocol_type", default="http"): vol.In(PROTOCOL_TYPES),
-    }
-)
-
-# Step 2a: HTTP connection details
+# HTTP connection details
 STEP_HTTP_CONNECTION_SCHEMA = vol.Schema(
     {
         vol.Required("http_base_url"): cv.string,
@@ -46,17 +37,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize config flow."""
         _LOGGER.info("=== Config flow __init__ called ===")
-        self._protocol_type: str | None = None
         self._http_config: dict[str, Any] = {}
         self._discovered_devices: list[dict[str, str]] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step - go directly to HTTP connection."""
+        """Handle the initial step - HTTP connection configuration."""
         _LOGGER.info("=== async_step_user called with input: %s ===", user_input)
-        # Only HTTP is supported, skip protocol selection
-        self._protocol_type = "http"
         return await self.async_step_http_connection()
 
     async def async_step_http_connection(
@@ -81,9 +69,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
 
                 try:
-                    controller = NiceController(
-                        protocol_type="http", http_config=self._http_config
-                    )
+                    controller = NiceController(http_config=self._http_config)
                     self._discovered_devices = await controller.discover_devices()
                     await controller.cleanup()
 
@@ -137,7 +123,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             # Create single entry with all selected devices
             entry_data = {
-                "protocol_type": "http",
                 "http_base_url": self._http_config["base_url"],
                 "http_username": self._http_config["username"],
                 "http_password": self._http_config["password"],

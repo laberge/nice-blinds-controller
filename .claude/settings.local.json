@@ -12,7 +12,9 @@
       "Bash(sips:*)",
       "Bash(gh repo edit:*)",
       "Bash(gh repo view:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Read(//Users/aaron/Library/Mobile Documents/com~apple~CloudDocs/Downloads/**)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

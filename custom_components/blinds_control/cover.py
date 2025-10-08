@@ -26,53 +26,29 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Blinds Control cover platform."""
-    protocol_type = config_entry.data.get("protocol_type", "rf433")
-    gpio_pin = config_entry.data.get("gpio_pin", 17)
     move_time = config_entry.data.get("move_time", 30)
 
-    # Build HTTP config if protocol is HTTP
-    http_config = None
-    if protocol_type == "http":
-        http_config = {
-            "base_url": config_entry.data.get("http_base_url"),
-            "open_endpoint": config_entry.data.get("http_open_endpoint", "/open"),
-            "close_endpoint": config_entry.data.get("http_close_endpoint", "/close"),
-            "stop_endpoint": config_entry.data.get("http_stop_endpoint", "/stop"),
-            "username": config_entry.data.get("http_username"),
-            "password": config_entry.data.get("http_password"),
-            "timeout": config_entry.data.get("http_timeout", 10),
-        }
+    # Build HTTP config
+    http_config = {
+        "base_url": config_entry.data.get("http_base_url"),
+        "username": config_entry.data.get("http_username"),
+        "password": config_entry.data.get("http_password"),
+        "timeout": config_entry.data.get("http_timeout", 10),
+    }
 
-    # Initialize Nice controller
-    controller = NiceController(
-        protocol_type=protocol_type, gpio_pin=gpio_pin, http_config=http_config
-    )
+    # Initialize Nice HTTP controller
+    controller = NiceController(http_config=http_config)
 
-    # Create cover entities
+    # Create cover entities for all devices
     entities = []
+    devices = config_entry.data.get("devices", [])
 
-    # Check if this is a multi-device HTTP entry
-    devices = config_entry.data.get("devices")
-    if devices:
-        # HTTP controller with multiple devices
-        for device in devices:
-            entity = BlindsCover(
-                name=device["name"],
-                unique_id=f"{config_entry.entry_id}_{device['id']}",
-                controller=controller,
-                device_id=device["id"],
-                move_time=move_time,
-            )
-            entities.append(entity)
-    else:
-        # Single device (RF433 or legacy single HTTP device)
-        name = config_entry.data.get("name", "Smart Blinds")
-        device_id = config_entry.data.get("device_id")
+    for device in devices:
         entity = BlindsCover(
-            name=name,
-            unique_id=config_entry.entry_id,
+            name=device["name"],
+            unique_id=f"{config_entry.entry_id}_{device['id']}",
             controller=controller,
-            device_id=device_id,
+            device_id=device["id"],
             move_time=move_time,
         )
         entities.append(entity)
@@ -96,7 +72,7 @@ class BlindsCover(CoverEntity):
         name: str,
         unique_id: str,
         controller: NiceController,
-        device_id: str | None,
+        device_id: str,
         move_time: int = 30,
     ) -> None:
         """Initialize the blind."""
