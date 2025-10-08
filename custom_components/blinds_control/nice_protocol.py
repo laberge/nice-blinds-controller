@@ -141,9 +141,6 @@ class NiceController:
             _LOGGER.info("Fetching device list from: %s (with auth: %s)", url, auth is not None)
             async with self._http_session.get(url, auth=auth) as response:
                 _LOGGER.info("HTTP Response status: %s", response.status)
-                if response.status == 401:
-                    _LOGGER.error("Authentication failed (401 Unauthorized) - check username/password")
-                    return []
                 response.raise_for_status()
                 html = await response.text()
                 _LOGGER.info("HTML response length: %d bytes", len(html))
