@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added integration icon (`mdi:blinds`) to display in Home Assistant UI
 - Icon now appears in Settings → Devices & Services
 
+### Documentation
+- Removed RF 433MHz and BiDi-Bus protocol references (HTTP only)
+- Cleaned up README to focus on HTTP/network controllers
+- Updated troubleshooting section for real position tracking
+- Simplified configuration steps (no protocol selection)
+
 ## [1.7.0] - 2025-10-08
 
 ### 🎉 NEW FEATURE - Groups in Integration Settings!
