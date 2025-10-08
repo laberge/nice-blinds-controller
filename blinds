@@ -6,11 +6,16 @@ import aiohttp
 import sys
 import os
 import xml.etree.ElementTree as ET
+import yaml
 
 # Configuration - Update these with your settings or use environment variables
 CONTROLLER_URL = os.getenv("BLINDS_URL", "http://192.168.10.235")
 USERNAME = os.getenv("BLINDS_USER", "aaron")
 PASSWORD = os.getenv("BLINDS_PASS", "")  # Set BLINDS_PASS env var or edit here
+
+# Path to groups configuration file
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+GROUPS_FILE = os.path.join(SCRIPT_DIR, "blinds_groups.yaml")
 
 
 async def get_devices(base_url: str, username: str, password: str):
@@ -108,6 +113,20 @@ async def get_device_status(base_url: str, username: str, password: str, device_
             return devices
 
 
+def load_groups():
+    """Load groups from YAML configuration file."""
+    try:
+        if not os.path.exists(GROUPS_FILE):
+            return {}
+        
+        with open(GROUPS_FILE, 'r') as f:
+            config = yaml.safe_load(f)
+            return config.get('groups', {})
+    except Exception as e:
+        print(f"Warning: Could not load groups file: {e}")
+        return {}
+
+
 async def send_command(base_url: str, username: str, password: str, device_id: str, command: str):
     """Send a command to a Nice blind."""
     parts = device_id.split(",")
@@ -126,6 +145,60 @@ async def send_command(base_url: str, username: str, password: str, device_id: s
         async with session.get(url, auth=auth) as response:
             response.raise_for_status()
             return True
+
+
+async def send_group_command(group_name: str, command: str, config_url: str, config_user: str, config_pass: str):
+    """Send a command to a group of blinds."""
+    groups = load_groups()
+    
+    if group_name not in groups:
+        print(f"✗ Error: Group '{group_name}' not found")
+        print(f"\nAvailable groups:")
+        for name, info in groups.items():
+            print(f"  - {name}: {info.get('name', name)} ({len(info.get('devices', []))} devices)")
+        return False
+    
+    group = groups[group_name]
+    devices_to_control = group.get('devices', [])
+    
+    if not devices_to_control:
+        print(f"✗ Error: Group '{group_name}' has no devices")
+        return False
+    
+    # Get all devices to map names to IDs
+    all_devices = await get_devices(config_url, config_user, config_pass)
+    
+    print(f"\n{'='*60}")
+    print(f"{command.upper()} group: {group.get('name', group_name)}")
+    print(f"{'='*60}")
+    
+    success_count = 0
+    fail_count = 0
+    
+    for device_name in devices_to_control:
+        device_name_lower = device_name.lower()
+        
+        if device_name_lower not in all_devices:
+            print(f"  ✗ {device_name}: Not found")
+            fail_count += 1
+            continue
+        
+        device_id = all_devices[device_name_lower]
+        
+        try:
+            await send_command(config_url, config_user, config_pass, device_id, command)
+            print(f"  ✓ {device_name}: {command}")
+            success_count += 1
+            await asyncio.sleep(0.2)  # Small delay between commands
+        except Exception as e:
+            print(f"  ✗ {device_name}: {e}")
+            fail_count += 1
+    
+    print(f"{'='*60}")
+    print(f"Results: {success_count} succeeded, {fail_count} failed")
+    print(f"{'='*60}\n")
+    
+    return fail_count == 0
 
 
 async def main_async(command: str, device_name: str, config_url: str, config_user: str, config_pass: str):
@@ -252,43 +325,43 @@ if __name__ == "__main__":
                 # Sort devices by name for better readability
                 devices.sort(key=lambda d: d['name'])
                 
-                print(f"\n╔{'═'*76}╗")
-                print(f"║{'NICE BLINDS STATUS':^76}║")
-                print(f"╠{'═'*76}╣")
-                print(f"║ {'Device':<22} {'Status':<15} {'Position':<12} {'ID':<18} ║")
-                print(f"╠{'═'*76}╣")
+                print(f"\n╔{'═'*78}╗")
+                print(f"║{'NICE BLINDS STATUS':^78}║")
+                print(f"╠{'═'*78}╣")
+                print(f"║ {'Device':<22} {'Status':<13} {'Position':<28} {'ID':<8} ║")
+                print(f"╠{'═'*78}╣")
                 
                 for device in devices:
                     # Determine visual indicator
                     if device['sta_code'] in ['04']:  # Open
-                        visual = "🟢 OPEN    "
-                        bar = "█" * 10
+                        visual = "🟢 OPEN   "
+                        bar = "██████████"
                     elif device['sta_code'] in ['05']:  # Closed
-                        visual = "🔴 CLOSED  "
-                        bar = "░" * 10
+                        visual = "🔴 CLOSED "
+                        bar = "░░░░░░░░░░"
                     elif device['sta_code'] in ['02']:  # Opening
-                        visual = "🔵 OPENING "
+                        visual = "🔵 OPENING"
                         pos_num = int(device['pos_raw']) if device['pos_raw'] != '255' else 50
                         filled = int(pos_num / 10)
-                        bar = "█" * filled + "░" * (10 - filled)
+                        bar = ("█" * filled) + ("░" * (10 - filled))
                     elif device['sta_code'] in ['03']:  # Closing
-                        visual = "🟡 CLOSING "
+                        visual = "🟡 CLOSING"
                         pos_num = int(device['pos_raw']) if device['pos_raw'] != '255' else 50
                         filled = int(pos_num / 10)
-                        bar = "█" * filled + "░" * (10 - filled)
+                        bar = ("█" * filled) + ("░" * (10 - filled))
                     else:
-                        visual = "⚪ UNKNOWN "
-                        bar = "?" * 10
+                        visual = "⚪ UNKNOWN"
+                        bar = "??????????"
                     
-                    # Format position display
+                    # Format position display with bar
                     if device['position'] == "Unknown":
-                        pos_display = f"{'--':<3}     {bar}"
+                        pos_display = f"--      {bar}"
                     else:
-                        pos_display = f"{device['position']:<6}  {bar}"
+                        pos_display = f"{device['position']:<7} {bar}"
                     
-                    print(f"║ {device['name']:<22} {visual:<15} {pos_display:<12} {device['id']:<18} ║")
+                    print(f"║ {device['name']:<22} {visual:<13} {pos_display:<28} {device['id']:<8} ║")
                 
-                print(f"╠{'═'*76}╣")
+                print(f"╠{'═'*78}╣")
                 
                 # Show summary with visual indicators
                 open_count = sum(1 for d in devices if d['sta_code'] == '04')
@@ -297,8 +370,8 @@ if __name__ == "__main__":
                 total = len(devices)
                 
                 summary = f"Total: {total}  |  🟢 Open: {open_count}  |  🔴 Closed: {closed_count}  |  🔵 Moving: {moving_count}"
-                print(f"║ {summary:<74} ║")
-                print(f"╚{'═'*76}╝\n")
+                print(f"║ {summary:<76} ║")
+                print(f"╚{'═'*78}╝\n")
                 
             except Exception as e:
                 print(f"✗ Error: {e}")
