@@ -100,8 +100,66 @@ async def test_controller(base_url: str, username: str, password: str):
         except Exception as e:
             print(f"  Error: {e}")
         
-        # Test 4: Try different endpoints
-        print(f"\n\nTest 4: Trying alternative endpoints")
+        # Test 4: XML Device List (THE CORRECT ENDPOINT)
+        print(f"\n\nTest 4: XML Device List endpoint (CORRECT ENDPOINT)")
+        print(f"-" * 60)
+        xml_url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
+        print(f"URL: {xml_url}")
+        
+        try:
+            async with session.get(xml_url, auth=auth) as response:
+                print(f"  Status: {response.status}")
+                xml_content = await response.text()
+                print(f"  Response size: {len(xml_content)} bytes")
+                print(f"\n  Full XML content:")
+                print(f"  {'-'*58}")
+                print(xml_content)
+                print(f"  {'-'*58}")
+                
+                # Parse XML to show devices
+                from xml.etree import ElementTree as ET
+                try:
+                    root = ET.fromstring(xml_content)
+                    device_elements = root.findall('.//device')
+                    
+                    print(f"\n  XML Analysis:")
+                    print(f"  - Total devices in XML: {len(device_elements)}")
+                    
+                    installed_count = 0
+                    for i, device in enumerate(device_elements):
+                        installed = device.get('installed', '0')
+                        if installed == '1':
+                            installed_count += 1
+                            product_name = device.get('productName', 'Unknown')
+                            adr = device.get('adr', '0')
+                            ept = device.get('ept', '0')
+                            desc = device.get('desc', '')
+                            
+                            adr_dec = int(adr, 16)
+                            ept_dec = int(ept, 16)
+                            
+                            print(f"\n  Device {installed_count}:")
+                            print(f"    Name: {desc if desc else product_name}")
+                            print(f"    Module: {product_name}")
+                            print(f"    Address: {adr_dec} (0x{adr})")
+                            print(f"    Endpoint: {ept_dec} (0x{ept})")
+                            print(f"    ID for commands: adr={adr_dec}, ept={ept}")
+                    
+                    if installed_count == 0:
+                        print(f"  ⚠ No installed devices found")
+                        print(f"  Total devices in XML: {len(device_elements)}")
+                        print(f"  They might not be marked as installed='1'")
+                    else:
+                        print(f"\n  ✓ Found {installed_count} installed devices!")
+                        
+                except ET.ParseError as e:
+                    print(f"  ✗ XML Parse Error: {e}")
+                    
+        except Exception as e:
+            print(f"  Error: {e}")
+        
+        # Test 5: Try different endpoints
+        print(f"\n\nTest 5: Trying alternative endpoints")
         print(f"-" * 60)
         
         endpoints = [

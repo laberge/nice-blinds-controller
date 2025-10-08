@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 import aiohttp
-from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -143,10 +143,11 @@ class NiceController:
             await self._ensure_initialized()
 
         base_url = self.http_config.get("base_url", "")
-        url = f"{base_url.rstrip('/')}/dev_list.htm"
+        # Use XML endpoint instead of HTML page - devices are loaded via AJAX
+        url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
         
         _LOGGER.debug("Base URL: %s", base_url)
-        _LOGGER.debug("Device list URL: %s", url)
+        _LOGGER.debug("Device list XML URL: %s", url)
 
         auth = None
         username = self.http_config.get("username")
@@ -176,67 +177,68 @@ class NiceController:
                     )
                 
                 response.raise_for_status()
-                html = await response.text()
-                _LOGGER.debug("Received %d bytes of HTML", len(html))
-                _LOGGER.debug("HTML preview: %s", html[:500])
+                xml_content = await response.text()
+                _LOGGER.debug("Received %d bytes of XML", len(xml_content))
+                _LOGGER.debug("XML preview: %s", xml_content[:500])
                 
-                # Log full HTML for debugging (can be removed later)
-                _LOGGER.debug("Full HTML content:\n%s", html)
+                # Log full XML for debugging
+                _LOGGER.debug("Full XML content:\n%s", xml_content)
                 
-                # Check if we got a login/error page instead of device list
-                html_lower = html.lower()
-                if any(keyword in html_lower for keyword in ['login', 'password', 'authentication', 'unauthorized', 'access denied']):
-                    _LOGGER.error("Received login/auth page instead of device list. Check credentials.")
+                # Check if we got a login/error page instead of XML
+                xml_lower = xml_content.lower()
+                if any(keyword in xml_lower for keyword in ['<!doctype html', '<html', 'login', 'password']):
+                    _LOGGER.error("Received HTML/login page instead of XML. Check credentials.")
                     raise aiohttp.ClientResponseError(
                         request_info=response.request_info,
                         history=response.history,
                         status=401,
-                        message="Authentication failed - received login page"
+                        message="Authentication failed - received HTML instead of XML"
                     )
 
-                # Parse HTML to extract device information
-                soup = BeautifulSoup(html, "html.parser")
+                # Parse XML to extract device information
+                try:
+                    root = ET.fromstring(xml_content)
+                except ET.ParseError as err:
+                    _LOGGER.error("Failed to parse XML: %s", err)
+                    raise
+
                 devices = []
 
-                # Find all table rows with device data
-                rows_found = 0
-                for row in soup.find_all("tr"):
-                    cells = row.find_all("td")
-                    rows_found += 1
-                    if len(cells) >= 2:
-                        module_text = cells[0].get_text(strip=True)
-                        description = cells[1].get_text(strip=True)
-                        _LOGGER.debug("Checking row: module='%s', desc='%s'", module_text, description)
+                # Find all device elements
+                device_elements = root.findall('.//device')
+                _LOGGER.debug("Found %d device elements in XML", len(device_elements))
 
-                        # Parse module format: "EI SM (1,1)" -> adr=1, ept=01
-                        # Try different patterns to match various controller formats
-                        match = re.match(r"EI SM \((\d+),(\d+)\)", module_text)
-                        if not match:
-                            # Try alternative pattern without "EI SM" prefix
-                            match = re.match(r"\((\d+),(\d+)\)", module_text)
-                        if not match:
-                            # Try pattern with different spacing
-                            match = re.match(r"EI\s+SM\s*\((\d+),(\d+)\)", module_text)
-                        
-                        if match and description:
-                            adr = match.group(1)
-                            ept_decimal = int(match.group(2))
-                            ept_hex = f"{ept_decimal:02X}"
+                for device_elem in device_elements:
+                    # Get device attributes
+                    installed = device_elem.get('installed', '0')
+                    
+                    # Only process installed devices
+                    if installed != '1':
+                        _LOGGER.debug("Skipping non-installed device")
+                        continue
+                    
+                    mac = device_elem.get('mac', '')
+                    product_name = device_elem.get('productName', 'Unknown')
+                    adr = device_elem.get('adr', '0')  # Already in hex
+                    ept = device_elem.get('ept', '0')  # Already in hex
+                    desc = device_elem.get('desc', product_name)
+                    
+                    # Convert hex to decimal for display in module name
+                    adr_dec = int(adr, 16)
+                    ept_dec = int(ept, 16)
+                    
+                    device = {
+                        "id": f"{adr_dec},{ept}",  # Use decimal adr, hex ept
+                        "name": desc if desc else product_name,
+                        "module": f"{product_name} ({adr_dec},{ept_dec})",
+                        "adr": str(adr_dec),  # Store as decimal string for command
+                        "ept": ept.upper(),  # Store as hex for command
+                    }
+                    devices.append(device)
+                    _LOGGER.debug("Found device: %s (id: %s, adr: %s, ept: %s)", 
+                                device["name"], device["id"], device["adr"], device["ept"])
 
-                            device = {
-                                "id": f"{adr},{ept_hex}",
-                                "name": description,
-                                "module": module_text,
-                                "adr": adr,
-                                "ept": ept_hex,
-                            }
-                            devices.append(device)
-                            _LOGGER.debug("Found device: %s (id: %s)", device["name"], device["id"])
-                        else:
-                            if module_text:
-                                _LOGGER.debug("Skipping row with unmatched pattern: %s", module_text)
-
-                _LOGGER.info("Device discovery complete: found %d devices (parsed %d rows)", len(devices), rows_found)
+                _LOGGER.info("Device discovery complete: found %d installed devices", len(devices))
                 return devices
 
         except aiohttp.ClientError as err:
