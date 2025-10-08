@@ -5,23 +5,39 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] - 2025-10-08
 
-### Added
-- **CLI Tools**: Complete command-line interface for controlling blinds
+### Added - CLI Tools & Enhancements
+- **Complete CLI Tools Suite**: Standalone command-line interface for controlling blinds without Home Assistant
   - `blinds` - Main CLI using friendly device names (e.g., `blinds open "MBA 3"`)
   - `send_command.py` - Standalone command sender using device IDs
   - `test_commands.py` - Command testing tool
+  - `test_controller.py` - Diagnostic tool (from v1.3.0)
+- **Status Command**: Beautiful table display showing all blinds status
+  - Color-coded indicators (🟢 Open, 🔴 Closed, 🔵 Opening, 🟡 Closing)
+  - Visual progress bars (██████████ / ░░░░░░░░░░)
+  - Real-time position tracking
+  - Alphabetically sorted device list
+  - Summary statistics
 - **Setup Tools**:
   - `setup_blinds_cli.sh` - Interactive setup script (zsh-native)
   - `blinds.zsh` - Dotfiles-ready configuration file
-- **Documentation**:
+- **Groups Support** (Infrastructure):
+  - `blinds_groups.yaml` - Group configuration file with pre-defined rooms
+  - Group command infrastructure for batch operations
+- **Comprehensive Documentation**:
   - `QUICK_START.md` - Complete quick start guide
   - `BLINDS_CLI_README.md` - Detailed CLI documentation
   - `DOTFILES_SETUP.md` - Dotfiles integration guide with security best practices
 - Support for dotfiles workflows with multiple setup options
 - Password security options (environment variables, keychain, password managers)
-- Per-room batch operations and custom aliases
+
+### Fixed
+- Status table alignment (all borders now align properly)
+- Column width optimization for better readability
+
+### Dependencies
+- Added PyYAML for groups configuration support
 
 ## [1.4.0] - 2025-10-08
 
