@@ -8,7 +8,7 @@ import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 import homeassistant.helpers.config_validation as cv
 
@@ -35,6 +35,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Blinds Control."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Get the options flow for this handler."""
+        return OptionsFlowHandler(config_entry)
 
     def __init__(self) -> None:
         """Initialize config flow."""
@@ -248,4 +254,180 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("add_another", default=False): cv.boolean,
             }
         )
+
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for Blinds Control."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+        self._groups = list(config_entry.data.get("groups", []))
+        self._devices = config_entry.data.get("devices", [])
+        self._current_group_index = None
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        return await self.async_step_manage_groups()
+
+    async def async_step_manage_groups(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage groups - list, add, edit, delete."""
+        if user_input is not None:
+            action = user_input.get("action")
+            
+            if action == "add":
+                return await self.async_step_add_group()
+            elif action == "edit":
+                return await self.async_step_select_group_to_edit()
+            elif action == "delete":
+                return await self.async_step_select_group_to_delete()
+            elif action == "done":
+                return await self._update_options()
+        
+        # Build options based on existing groups
+        group_count = len(self._groups)
+        group_list = "\n".join([f"• {g['name']} ({len(g['devices'])} devices)" for g in self._groups]) if self._groups else "No groups configured"
+        
+        return self.async_show_form(
+            step_id="manage_groups",
+            data_schema=vol.Schema({
+                vol.Required("action"): vol.In({
+                    "add": f"Add new group (current: {group_count})",
+                    "edit": "Edit existing group" if self._groups else "Edit existing group (none)",
+                    "delete": "Delete a group" if self._groups else "Delete a group (none)",
+                    "done": "Save and finish",
+                }),
+            }),
+            description_placeholders={
+                "groups": group_list,
+            },
+        )
+
+    async def async_step_add_group(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Add a new group."""
+        if user_input is not None:
+            group_name = user_input.get("group_name", "").strip()
+            group_devices = user_input.get("group_devices", [])
+            
+            if group_name and group_devices:
+                self._groups.append({
+                    "name": group_name,
+                    "devices": group_devices,
+                })
+            
+            return await self.async_step_manage_groups()
+        
+        device_options = {
+            device["id"]: device["name"]
+            for device in self._devices
+        }
+
+        return self.async_show_form(
+            step_id="add_group",
+            data_schema=vol.Schema({
+                vol.Required("group_name"): cv.string,
+                vol.Required("group_devices"): cv.multi_select(device_options),
+            }),
+        )
+
+    async def async_step_select_group_to_edit(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Select which group to edit."""
+        if user_input is not None:
+            self._current_group_index = int(user_input.get("group_index"))
+            return await self.async_step_edit_group()
+        
+        if not self._groups:
+            return await self.async_step_manage_groups()
+        
+        group_options = {
+            str(i): f"{group['name']} ({len(group['devices'])} devices)"
+            for i, group in enumerate(self._groups)
+        }
+
+        return self.async_show_form(
+            step_id="select_group_to_edit",
+            data_schema=vol.Schema({
+                vol.Required("group_index"): vol.In(group_options),
+            }),
+        )
+
+    async def async_step_edit_group(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Edit a group."""
+        if user_input is not None:
+            group_name = user_input.get("group_name", "").strip()
+            group_devices = user_input.get("group_devices", [])
+            
+            if group_name and group_devices:
+                self._groups[self._current_group_index] = {
+                    "name": group_name,
+                    "devices": group_devices,
+                }
+            
+            return await self.async_step_manage_groups()
+        
+        current_group = self._groups[self._current_group_index]
+        device_options = {
+            device["id"]: device["name"]
+            for device in self._devices
+        }
+
+        return self.async_show_form(
+            step_id="edit_group",
+            data_schema=vol.Schema({
+                vol.Required("group_name", default=current_group["name"]): cv.string,
+                vol.Required("group_devices", default=current_group["devices"]): cv.multi_select(device_options),
+            }),
+        )
+
+    async def async_step_select_group_to_delete(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Select which group to delete."""
+        if user_input is not None:
+            group_index = int(user_input.get("group_index"))
+            deleted_name = self._groups[group_index]["name"]
+            del self._groups[group_index]
+            _LOGGER.info("Deleted group: %s", deleted_name)
+            return await self.async_step_manage_groups()
+        
+        if not self._groups:
+            return await self.async_step_manage_groups()
+        
+        group_options = {
+            str(i): f"{group['name']} ({len(group['devices'])} devices)"
+            for i, group in enumerate(self._groups)
+        }
+
+        return self.async_show_form(
+            step_id="select_group_to_delete",
+            data_schema=vol.Schema({
+                vol.Required("group_index"): vol.In(group_options),
+            }),
+        )
+
+    async def _update_options(self) -> FlowResult:
+        """Update config entry with new group configuration."""
+        # Update the config entry data with new groups
+        new_data = {**self.config_entry.data}
+        new_data["groups"] = self._groups
+        
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            data=new_data,
+        )
+        
+        # Reload the integration to apply changes
+        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+        
+        return self.async_create_entry(title="", data={})
 

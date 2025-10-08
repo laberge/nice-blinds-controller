@@ -13,6 +13,7 @@ from homeassistant.components.cover import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import DeviceInfo
 
 from . import DOMAIN
 from .nice_protocol import NiceController
@@ -51,6 +52,8 @@ async def async_setup_entry(
             controller=controller,
             device_id=device["id"],
             move_time=move_time,
+            entry_id=config_entry.entry_id,
+            device_info=device,
         )
         entities.append(entity)
         device_entities[device["id"]] = entity
@@ -73,6 +76,7 @@ async def async_setup_entry(
                 name=group_name,
                 unique_id=f"{config_entry.entry_id}_group_{group_name.lower().replace(' ', '_')}",
                 member_entities=member_entities,
+                entry_id=config_entry.entry_id,
             )
             entities.append(group_entity)
 
@@ -97,6 +101,8 @@ class BlindsCover(CoverEntity):
         controller: NiceController,
         device_id: str,
         move_time: int = 30,
+        entry_id: str = None,
+        device_info: dict = None,
     ) -> None:
         """Initialize the blind."""
         self._attr_name = name
@@ -108,6 +114,17 @@ class BlindsCover(CoverEntity):
         self._is_closing = False
         self._move_time = move_time  # Estimated time to fully open/close in seconds
         self._attr_should_poll = True  # Enable polling to get real position
+        
+        # Create device info
+        if device_info:
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, f"{entry_id}_{device_id}")},
+                name=name,
+                manufacturer="Nice S.p.A.",
+                model=device_info.get("module", "Nice Blind Motor"),
+                sw_version=device_info.get("adr", "1"),
+                via_device=(DOMAIN, entry_id),
+            )
         
     async def async_update(self) -> None:
         """Fetch new state data for this cover."""
@@ -250,12 +267,23 @@ class BlindsGroupCover(CoverEntity):
         name: str,
         unique_id: str,
         member_entities: list[BlindsCover],
+        entry_id: str = None,
     ) -> None:
         """Initialize the blind group."""
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._member_entities = member_entities
         self._attr_should_poll = True
+        
+        # Create device info for the group
+        if entry_id:
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, f"{entry_id}_group_{name.lower().replace(' ', '_')}")},
+                name=f"{name} (Group)",
+                manufacturer="Nice S.p.A.",
+                model="Blind Group",
+                via_device=(DOMAIN, entry_id),
+            )
 
     async def async_update(self) -> None:
         """Update the group state from member entities."""
