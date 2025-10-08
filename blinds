@@ -47,6 +47,67 @@ async def get_devices(base_url: str, username: str, password: str):
             return devices
 
 
+async def get_device_status(base_url: str, username: str, password: str, device_name: str = None):
+    """Get status of devices."""
+    url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
+    
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        auth = aiohttp.BasicAuth(username, password) if username and password else None
+        
+        async with session.get(url, auth=auth) as response:
+            response.raise_for_status()
+            xml_content = await response.text()
+            
+            root = ET.fromstring(xml_content)
+            device_elements = root.findall('.//device')
+            
+            # Status code mappings
+            status_map = {
+                "00": "Stopped",
+                "01": "Stopped",
+                "02": "Opening",
+                "03": "Closing",
+                "04": "Open (high limit)",
+                "05": "Closed (low limit)",
+            }
+            
+            devices = []
+            for device_elem in device_elements:
+                installed = device_elem.get('installed', '0')
+                if installed != '1':
+                    continue
+                
+                adr = device_elem.get('adr', '0')
+                ept = device_elem.get('ept', '0')
+                desc = device_elem.get('desc', '')
+                sta = device_elem.get('sta', '00')
+                pos = device_elem.get('pos', '255')
+                inp = device_elem.get('inp', '0')
+                
+                # If device_name specified, filter
+                if device_name and desc.lower() != device_name.lower():
+                    continue
+                
+                adr_dec = int(adr, 16)
+                device_id = f"{adr_dec},{ept}"
+                
+                # Parse status
+                status_text = status_map.get(sta, f"Unknown ({sta})")
+                position = "Unknown" if pos == "255" else f"{pos}%"
+                
+                devices.append({
+                    'name': desc,
+                    'id': device_id,
+                    'status': status_text,
+                    'position': position,
+                    'sta_code': sta,
+                    'pos_raw': pos,
+                })
+            
+            return devices
+
+
 async def send_command(base_url: str, username: str, password: str, device_id: str, command: str):
     """Send a command to a Nice blind."""
     parts = device_id.split(",")
@@ -104,18 +165,21 @@ def print_usage():
 ╚══════════════════════════════════════════════════════════════╝
 
 Usage:
-  ./blinds <command> "<device_name>"
+  ./blinds <command> ["<device_name>"]
 
 Commands:
   open   - Opens the blind
   close  - Closes the blind
   stop   - Stops the blind
+  status - Show status of all blinds (or specific blind)
   list   - List all devices
 
 Examples:
   ./blinds open "MBA 3"
   ./blinds close "Kitchen 1"
   ./blinds stop "Office 1"
+  ./blinds status              # Show all devices status
+  ./blinds status "Office 1"   # Show specific device status
   ./blinds list
 
 Your Devices:
@@ -177,6 +241,71 @@ if __name__ == "__main__":
         asyncio.run(list_devices_async(CONTROLLER_URL, USERNAME, PASSWORD))
         sys.exit(0)
     
+    # Handle status command
+    if command == "status":
+        device_name = sys.argv[2] if len(sys.argv) > 2 else None
+        
+        async def show_status():
+            try:
+                devices = await get_device_status(CONTROLLER_URL, USERNAME, PASSWORD, device_name)
+                
+                # Sort devices by name for better readability
+                devices.sort(key=lambda d: d['name'])
+                
+                print(f"\n╔{'═'*76}╗")
+                print(f"║{'NICE BLINDS STATUS':^76}║")
+                print(f"╠{'═'*76}╣")
+                print(f"║ {'Device':<22} {'Status':<15} {'Position':<12} {'ID':<18} ║")
+                print(f"╠{'═'*76}╣")
+                
+                for device in devices:
+                    # Determine visual indicator
+                    if device['sta_code'] in ['04']:  # Open
+                        visual = "🟢 OPEN    "
+                        bar = "█" * 10
+                    elif device['sta_code'] in ['05']:  # Closed
+                        visual = "🔴 CLOSED  "
+                        bar = "░" * 10
+                    elif device['sta_code'] in ['02']:  # Opening
+                        visual = "🔵 OPENING "
+                        pos_num = int(device['pos_raw']) if device['pos_raw'] != '255' else 50
+                        filled = int(pos_num / 10)
+                        bar = "█" * filled + "░" * (10 - filled)
+                    elif device['sta_code'] in ['03']:  # Closing
+                        visual = "🟡 CLOSING "
+                        pos_num = int(device['pos_raw']) if device['pos_raw'] != '255' else 50
+                        filled = int(pos_num / 10)
+                        bar = "█" * filled + "░" * (10 - filled)
+                    else:
+                        visual = "⚪ UNKNOWN "
+                        bar = "?" * 10
+                    
+                    # Format position display
+                    if device['position'] == "Unknown":
+                        pos_display = f"{'--':<3}     {bar}"
+                    else:
+                        pos_display = f"{device['position']:<6}  {bar}"
+                    
+                    print(f"║ {device['name']:<22} {visual:<15} {pos_display:<12} {device['id']:<18} ║")
+                
+                print(f"╠{'═'*76}╣")
+                
+                # Show summary with visual indicators
+                open_count = sum(1 for d in devices if d['sta_code'] == '04')
+                closed_count = sum(1 for d in devices if d['sta_code'] == '05')
+                moving_count = sum(1 for d in devices if d['sta_code'] in ['02', '03'])
+                total = len(devices)
+                
+                summary = f"Total: {total}  |  🟢 Open: {open_count}  |  🔴 Closed: {closed_count}  |  🔵 Moving: {moving_count}"
+                print(f"║ {summary:<74} ║")
+                print(f"╚{'═'*76}╝\n")
+                
+            except Exception as e:
+                print(f"✗ Error: {e}")
+        
+        asyncio.run(show_status())
+        sys.exit(0)
+    
     # Handle device commands
     if len(sys.argv) < 3:
         print_usage()
@@ -186,7 +315,7 @@ if __name__ == "__main__":
     
     if command not in ["open", "close", "stop"]:
         print(f"✗ Error: Invalid command '{command}'")
-        print("Valid commands: open, close, stop, list")
+        print("Valid commands: open, close, stop, status, list")
         sys.exit(1)
     
     success = asyncio.run(main_async(command, device_name, CONTROLLER_URL, USERNAME, PASSWORD))
