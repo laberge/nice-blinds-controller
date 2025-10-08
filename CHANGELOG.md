@@ -5,6 +5,12 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2025-10-08
+
+### Fixed
+- Added integration icon (`mdi:blinds`) to display in Home Assistant UI
+- Icon now appears in Settings → Devices & Services
+
 ## [1.7.0] - 2025-10-08
 
 ### 🎉 NEW FEATURE - Groups in Integration Settings!
