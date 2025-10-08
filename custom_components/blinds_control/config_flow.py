@@ -41,6 +41,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         _LOGGER.debug("Config flow initialized")
         self._http_config: dict[str, Any] = {}
         self._discovered_devices: list[dict[str, str]] = []
+        self._selected_devices: list[dict[str, str]] = []
+        self._move_time: int = 30
+        self._groups: list[dict[str, Any]] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -131,28 +134,90 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if device:
                     devices_data.append(device)
 
-            # Create single entry with all selected devices
-            entry_data = {
-                "http_base_url": self._http_config["base_url"],
-                "http_username": self._http_config["username"],
-                "http_password": self._http_config["password"],
-                "http_timeout": self._http_config["timeout"],
-                "move_time": move_time,
-                "devices": devices_data,  # Store all devices in one entry
-            }
-
-            # Use controller URL as unique ID
-            await self.async_set_unique_id(f"nice_controller_{self._http_config['base_url']}")
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(
-                title=f"Nice Controller ({len(selected_devices)} devices)",
-                data=entry_data,
-            )
+            # Store selected devices and move on to groups
+            self._selected_devices = devices_data
+            self._move_time = move_time
+            
+            return await self.async_step_configure_groups()
 
         return self.async_show_form(
             step_id="select_devices",
             data_schema=self._build_device_selection_schema(),
+        )
+    
+    async def async_step_configure_groups(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle group configuration."""
+        if user_input is not None:
+            create_groups = user_input.get("create_groups", False)
+            
+            if not create_groups:
+                # Skip group creation, finish setup
+                return self._create_entry_with_data([])
+            
+            # Move to group creation step
+            self._groups = []
+            return await self.async_step_create_group()
+        
+        return self.async_show_form(
+            step_id="configure_groups",
+            data_schema=vol.Schema({
+                vol.Required("create_groups", default=True): cv.boolean,
+            }),
+            description_placeholders={
+                "device_count": str(len(self._selected_devices))
+            }
+        )
+    
+    async def async_step_create_group(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle creating a single group."""
+        if user_input is not None:
+            group_name = user_input.get("group_name", "").strip()
+            group_devices = user_input.get("group_devices", [])
+            add_another = user_input.get("add_another", False)
+            
+            if group_name and group_devices:
+                # Add this group
+                self._groups.append({
+                    "name": group_name,
+                    "devices": group_devices,
+                })
+            
+            if add_another:
+                # Show form again for another group
+                return await self.async_step_create_group()
+            else:
+                # Done with groups, create entry
+                return self._create_entry_with_data(self._groups)
+        
+        return self.async_show_form(
+            step_id="create_group",
+            data_schema=self._build_group_creation_schema(),
+        )
+    
+    def _create_entry_with_data(self, groups: list[dict[str, Any]]) -> FlowResult:
+        """Create the config entry with all data."""
+        entry_data = {
+            "http_base_url": self._http_config["base_url"],
+            "http_username": self._http_config["username"],
+            "http_password": self._http_config["password"],
+            "http_timeout": self._http_config["timeout"],
+            "move_time": self._move_time,
+            "devices": self._selected_devices,
+            "groups": groups,
+        }
+
+        # Use controller URL as unique ID
+        self.async_set_unique_id(f"nice_controller_{self._http_config['base_url']}")
+        self._abort_if_unique_id_configured()
+
+        group_text = f", {len(groups)} groups" if groups else ""
+        return self.async_create_entry(
+            title=f"Nice Controller ({len(self._selected_devices)} devices{group_text})",
+            data=entry_data,
         )
 
     def _build_device_selection_schema(self) -> vol.Schema:
@@ -166,6 +231,21 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required("devices"): cv.multi_select(device_options),
                 vol.Optional("move_time", default=30): cv.positive_int,
+            }
+        )
+    
+    def _build_group_creation_schema(self) -> vol.Schema:
+        """Build group creation schema."""
+        device_options = {
+            device["id"]: device["name"]
+            for device in self._selected_devices
+        }
+
+        return vol.Schema(
+            {
+                vol.Required("group_name"): cv.string,
+                vol.Required("group_devices"): cv.multi_select(device_options),
+                vol.Required("add_another", default=False): cv.boolean,
             }
         )
 

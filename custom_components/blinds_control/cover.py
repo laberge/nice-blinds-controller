@@ -42,6 +42,7 @@ async def async_setup_entry(
     # Create cover entities for all devices
     entities = []
     devices = config_entry.data.get("devices", [])
+    device_entities = {}  # Store entities by device ID for group references
 
     for device in devices:
         entity = BlindsCover(
@@ -52,6 +53,28 @@ async def async_setup_entry(
             move_time=move_time,
         )
         entities.append(entity)
+        device_entities[device["id"]] = entity
+
+    # Create group entities if configured
+    groups = config_entry.data.get("groups", [])
+    for group in groups:
+        group_name = group.get("name", "")
+        group_device_ids = group.get("devices", [])
+        
+        # Get the actual entity objects for the group members
+        member_entities = [
+            device_entities[device_id]
+            for device_id in group_device_ids
+            if device_id in device_entities
+        ]
+        
+        if member_entities:
+            group_entity = BlindsGroupCover(
+                name=group_name,
+                unique_id=f"{config_entry.entry_id}_group_{group_name.lower().replace(' ', '_')}",
+                member_entities=member_entities,
+            )
+            entities.append(group_entity)
 
     async_add_entities(entities, True)
 
@@ -209,3 +232,92 @@ class BlindsCover(CoverEntity):
             self._is_opening = False
             self._is_closing = False
             self.async_write_ha_state()
+
+
+class BlindsGroupCover(CoverEntity):
+    """Representation of a group of blinds covers."""
+
+    _attr_device_class = CoverDeviceClass.BLIND
+    _attr_supported_features = (
+        CoverEntityFeature.OPEN
+        | CoverEntityFeature.CLOSE
+        | CoverEntityFeature.STOP
+        | CoverEntityFeature.SET_POSITION
+    )
+
+    def __init__(
+        self,
+        name: str,
+        unique_id: str,
+        member_entities: list[BlindsCover],
+    ) -> None:
+        """Initialize the blind group."""
+        self._attr_name = name
+        self._attr_unique_id = unique_id
+        self._member_entities = member_entities
+        self._attr_should_poll = True
+
+    async def async_update(self) -> None:
+        """Update the group state from member entities."""
+        # Update all members first
+        for member in self._member_entities:
+            await member.async_update()
+
+    @property
+    def current_cover_position(self) -> int | None:
+        """Return average position of all members."""
+        positions = [
+            member.current_cover_position
+            for member in self._member_entities
+            if member.current_cover_position is not None
+        ]
+        if not positions:
+            return None
+        return int(sum(positions) / len(positions))
+
+    @property
+    def is_opening(self) -> bool:
+        """Return if any member is opening."""
+        return any(member.is_opening for member in self._member_entities)
+
+    @property
+    def is_closing(self) -> bool:
+        """Return if any member is closing."""
+        return any(member.is_closing for member in self._member_entities)
+
+    @property
+    def is_closed(self) -> bool:
+        """Return if all members are closed."""
+        return all(
+            member.is_closed
+            for member in self._member_entities
+            if member.current_cover_position is not None
+        )
+
+    async def async_open_cover(self, **kwargs: Any) -> None:
+        """Open all covers in the group."""
+        _LOGGER.info("Opening group: %s", self.name)
+        await asyncio.gather(
+            *[member.async_open_cover(**kwargs) for member in self._member_entities]
+        )
+
+    async def async_close_cover(self, **kwargs: Any) -> None:
+        """Close all covers in the group."""
+        _LOGGER.info("Closing group: %s", self.name)
+        await asyncio.gather(
+            *[member.async_close_cover(**kwargs) for member in self._member_entities]
+        )
+
+    async def async_stop_cover(self, **kwargs: Any) -> None:
+        """Stop all covers in the group."""
+        _LOGGER.info("Stopping group: %s", self.name)
+        await asyncio.gather(
+            *[member.async_stop_cover(**kwargs) for member in self._member_entities]
+        )
+
+    async def async_set_cover_position(self, **kwargs: Any) -> None:
+        """Move all covers in the group to a specific position."""
+        _LOGGER.info("Setting group %s to position: %s", self.name, kwargs.get("position"))
+        await asyncio.gather(
+            *[member.async_set_cover_position(**kwargs) for member in self._member_entities]
+        )

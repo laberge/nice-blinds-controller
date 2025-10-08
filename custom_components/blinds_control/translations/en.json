@@ -28,6 +28,30 @@
           "devices": "Select one or more devices to control",
           "move_time": "Time it takes for blinds to fully open/close"
         }
+      },
+      "configure_groups": {
+        "title": "Configure Groups",
+        "description": "Create groups to control multiple blinds together",
+        "data": {
+          "create_groups": "Create Groups"
+        },
+        "data_description": {
+          "create_groups": "Do you want to create groups? (e.g., 'Office Blinds', 'Sunroom Blinds')"
+        }
+      },
+      "create_group": {
+        "title": "Create Group",
+        "description": "Define a group of blinds to control together",
+        "data": {
+          "group_name": "Group Name",
+          "group_devices": "Devices in Group",
+          "add_another": "Add Another Group"
+        },
+        "data_description": {
+          "group_name": "Name for this group (e.g., 'Office Blinds')",
+          "group_devices": "Select devices to include in this group",
+          "add_another": "Create another group after this one"
+        }
       }
     },
     "error": {

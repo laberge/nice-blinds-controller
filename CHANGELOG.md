@@ -5,6 +5,38 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2025-10-08
+
+### 🎉 NEW FEATURE - Groups in Integration Settings!
+
+Groups can now be configured during integration setup and are visible in Home Assistant's admin UI!
+
+### Added
+- **Group Configuration in Setup Flow**: Create groups during integration setup
+  - New "Configure Groups" step after device selection
+  - Create multiple groups (e.g., "Office Blinds", "Sunroom Blinds")
+  - Select which devices belong to each group
+  - Groups created as proper cover entities
+- **Group Cover Entities**: Integration creates actual group cover entities
+  - Groups appear in Home Assistant UI as `cover.office_blinds`, etc.
+  - Control multiple blinds with single open/close/stop/position commands
+  - Average position displayed across all group members
+  - Works with automations, dashboards, and voice assistants
+
+### Changed
+- Config flow now has 3 steps instead of 2:
+  1. Controller connection
+  2. Select devices
+  3. Configure groups (NEW!)
+- Groups stored in config entry data
+- Group entities created alongside individual blind entities
+
+### Technical Details
+- `BlindsGroupCover` entity class for group control
+- Groups use `asyncio.gather()` to send commands to all members simultaneously
+- Group position calculated as average of member positions
+- Group opening/closing state shows true if any member is moving
+
 ## [1.6.0] - 2025-10-08
 
 ### 🎯 MAJOR IMPROVEMENT - Real Position Tracking!
