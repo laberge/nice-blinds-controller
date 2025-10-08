@@ -5,6 +5,34 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2025-10-08
+
+### 🎯 MAJOR IMPROVEMENT - Real Position Tracking!
+
+**Breaking Change:** The integration now reads ACTUAL positions from the controller instead of estimating based on time.
+
+### Added
+- **Real-time Position Tracking**: Integration now polls the controller for actual blind positions
+- **Automatic Status Updates**: Blinds update their position from the controller every poll interval
+- **Moving State Detection**: Automatically detects when blinds are opening/closing
+
+### Changed
+- **Position Source**: Changed from time-based estimation to reading `pos` attribute from controller XML
+- **Polling Enabled**: Set `should_poll = True` to fetch real status
+- **Faster Commands**: Open/close commands return immediately, position updates via polling
+- Added `get_device_status()` method to NiceController for fetching individual blind status
+
+### Fixed
+- Blinds now show actual position instead of estimated position
+- Position stays in sync with physical blind state
+- Moving state (opening/closing) now reflects actual motor state
+
+### Technical Details
+- Polls `/cgi/devlst.xml` endpoint for device status
+- Parses `sta` (status code) and `pos` (position) attributes
+- Status codes: `00/01`=Stopped, `02`=Opening, `03`=Closing, `04`=Open, `05`=Closed
+- Position: 0-100 (0=closed, 100=open), 255=unknown
+
 ## [1.5.0] - 2025-10-08
 
 ### Added - CLI Tools & Enhancements

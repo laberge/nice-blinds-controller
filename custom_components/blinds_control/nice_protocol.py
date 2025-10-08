@@ -130,6 +130,67 @@ class NiceController:
             _LOGGER.error("Connection test failed: %s", err)
             return False
 
+    async def get_device_status(self, device_id: str) -> dict[str, str] | None:
+        """Get current status of a specific device.
+        
+        Args:
+            device_id: Device identifier in format "adr,ept" (e.g., "1,0E")
+            
+        Returns:
+            Dict with device status info or None if not found
+        """
+        await self._ensure_initialized()
+        
+        if not self._http_session:
+            _LOGGER.error("HTTP session not initialized")
+            return None
+            
+        base_url = self.http_config.get("base_url", "")
+        url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
+        
+        auth = None
+        username = self.http_config.get("username")
+        password = self.http_config.get("password")
+        if username and password:
+            auth = aiohttp.BasicAuth(username, password)
+        
+        try:
+            async with self._http_session.get(url, auth=auth) as response:
+                response.raise_for_status()
+                xml_content = await response.text()
+                
+                root = ET.fromstring(xml_content)
+                device_elements = root.findall('.//device')
+                
+                # Parse device_id
+                parts = device_id.split(",")
+                if len(parts) != 2:
+                    return None
+                    
+                search_adr = parts[0]
+                search_ept = parts[1].upper()
+                
+                for device_elem in device_elements:
+                    adr = device_elem.get('adr', '0')
+                    ept = device_elem.get('ept', '0').upper()
+                    
+                    # Convert adr from hex to decimal for comparison
+                    adr_dec = str(int(adr, 16))
+                    
+                    if adr_dec == search_adr and ept == search_ept:
+                        return {
+                            'sta': device_elem.get('sta', '00'),
+                            'pos': device_elem.get('pos', '255'),
+                            'inp': device_elem.get('inp', '0'),
+                            'installed': device_elem.get('installed', '0'),
+                        }
+                
+                return None
+                
+        except Exception as err:
+            _LOGGER.error("Error getting device status: %s", err)
+            return None
+
     async def discover_devices(self) -> list[dict[str, str]]:
         """Discover devices from Nice HTTP controller.
 

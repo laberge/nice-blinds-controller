@@ -80,10 +80,29 @@ class BlindsCover(CoverEntity):
         self._attr_unique_id = unique_id
         self._controller = controller
         self._device_id = device_id
-        self._position = 0
+        self._position = None  # Will be fetched from controller
         self._is_opening = False
         self._is_closing = False
         self._move_time = move_time  # Estimated time to fully open/close in seconds
+        self._attr_should_poll = True  # Enable polling to get real position
+        
+    async def async_update(self) -> None:
+        """Fetch new state data for this cover."""
+        try:
+            # Get current status from controller
+            status = await self._controller.get_device_status(self._device_id)
+            if status:
+                # Update position from controller
+                pos = status.get('pos', '255')
+                if pos != '255':  # 255 means unknown position
+                    self._position = int(pos)
+                
+                # Update moving state
+                sta = status.get('sta', '00')
+                self._is_opening = (sta == '02')
+                self._is_closing = (sta == '03')
+        except Exception as err:
+            _LOGGER.error("Error updating blind %s status: %s", self.name, err)
 
     @property
     def current_cover_position(self) -> int | None:
@@ -115,14 +134,9 @@ class BlindsCover(CoverEntity):
         try:
             # Send Nice protocol open command
             await self._controller.send_command(self._device_id, "open")
-
-            # Simulate movement time
-            await asyncio.sleep(self._move_time)
-
-            self._position = 100
+            # Position will be updated by polling in async_update
         except Exception as err:
             _LOGGER.error("Error opening blinds %s: %s", self.name, err)
-        finally:
             self._is_opening = False
             self.async_write_ha_state()
 
@@ -136,14 +150,9 @@ class BlindsCover(CoverEntity):
         try:
             # Send Nice protocol close command
             await self._controller.send_command(self._device_id, "close")
-
-            # Simulate movement time
-            await asyncio.sleep(self._move_time)
-
-            self._position = 0
+            # Position will be updated by polling in async_update
         except Exception as err:
             _LOGGER.error("Error closing blinds %s: %s", self.name, err)
-        finally:
             self._is_closing = False
             self.async_write_ha_state()
 
@@ -166,7 +175,9 @@ class BlindsCover(CoverEntity):
         position = kwargs.get("position", 0)
         _LOGGER.info("Setting blinds %s to position: %s", self.name, position)
 
-        if position > self._position:
+        current_pos = self._position if self._position is not None else 0
+        
+        if position > current_pos:
             self._is_opening = True
             self._is_closing = False
         else:
@@ -177,7 +188,6 @@ class BlindsCover(CoverEntity):
 
         try:
             # Calculate movement time based on position difference
-            current_pos = self._position
             move_duration = abs(position - current_pos) / 100.0 * self._move_time
 
             # Send appropriate command
@@ -191,8 +201,8 @@ class BlindsCover(CoverEntity):
 
             # Stop at desired position
             await self._controller.send_command(self._device_id, "stop")
-
-            self._position = position
+            
+            # Position will be updated by polling in async_update
         except Exception as err:
             _LOGGER.error("Error setting blinds %s position: %s", self.name, err)
         finally:
