@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="custom_components/blinds_control/logo.png" alt="Nice Blinds Controller" width="200"/>
+  <img src="custom_components/blinds_control/logo.png" alt="Nice Blinds Controller" width="150"/>
 </p>
 
 # Nice Blinds Controller - Home Assistant Custom Integration
