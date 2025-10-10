@@ -5,66 +5,20 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.0] - 2025-10-08
-
-### Added - Devices Support & Group Management!
-
-**Blinds now appear as proper devices in Home Assistant with full group editing!**
+## [1.8.0] - 2025-10-10
 
 ### Added
-- **Device Registry Integration**: Each blind now appears as a device in Settings → Devices
-- **Main Controller Device**: Nice Controller device created to group all blinds
-- **Device Information**: Each blind shows:
-  - Manufacturer: Nice S.p.A.
-  - Model: Product name from controller
-  - Connection: Via Nice Controller
-  - Identifiers and unique IDs
-- **Options Flow for Group Management**: Configure button appears on integration!
-  - **Add groups** after initial setup
-  - **Edit existing groups** - change name or devices
-  - **Delete groups** you no longer need
-  - Live group list with device counts
-  - Changes apply immediately (integration auto-reloads)
+- Group cover entity (`BlindsGroupCover`) with true concurrent commands using `asyncio.gather()`
+- Real-time status polling from controller; entities set `should_poll = True`
 
 ### Changed
-- Blinds are now devices (not just entities)
-- Better organization in Home Assistant UI
-- Device page shows all related entities and controls
-- Groups also appear as devices
-- Groups can now be managed post-setup via Configure button
-
-### Benefits
-- **Better Organization**: All blinds grouped under controller device
-- **Device Actions**: Can create automations based on device triggers
-- **Better UI**: Device cards in dashboards
-- **Metadata**: See manufacturer, model info for each blind
-- **Flexible Groups**: Add/edit/delete groups without reconfiguring integration
-
-### Options Flow Actions
-1. **Add new group** - Create additional groups anytime
-2. **Edit existing group** - Rename or change devices
-3. **Delete a group** - Remove groups you don't need
-4. **Save and finish** - Apply changes and reload
-
-### Technical Details
-- Uses Home Assistant's `DeviceInfo` class
-- Each blind creates a device entry in device registry
-- Controller device links all blind devices
-- Groups appear as separate devices
-- Options flow with full CRUD operations for groups
-- Integration auto-reloads when groups change
-
-## [1.7.1] - 2025-10-08
+- Discovery switched to XML endpoint `/cgi/devlst.xml`; removed BeautifulSoup dependency
+- `NiceController` provides `get_device_status()` for per-device polling
+- Cover commands return immediately; positions update via polling
+- Manifest `iot_class` set to `local_polling`; added icon `mdi:blinds`
 
 ### Fixed
-- Added integration icon (`mdi:blinds`) to display in Home Assistant UI
-- Icon now appears in Settings → Devices & Services
-
-### Documentation
-- Removed RF 433MHz and BiDi-Bus protocol references (HTTP only)
-- Cleaned up README to focus on HTTP/network controllers
-- Updated troubleshooting section for real position tracking
-- Simplified configuration steps (no protocol selection)
+- Clean shutdown of HTTP session via `NiceController.cleanup()` on entity removal
 
 ## [1.7.0] - 2025-10-08
 

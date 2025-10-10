@@ -250,6 +250,13 @@ class BlindsCover(CoverEntity):
             self._is_closing = False
             self.async_write_ha_state()
 
+    async def async_will_remove_from_hass(self) -> None:
+        """Handle entity removal and clean up controller resources."""
+        try:
+            await self._controller.cleanup()
+        except Exception as err:
+            _LOGGER.error("Error during controller cleanup for %s: %s", self.name, err)
+
 
 class BlindsGroupCover(CoverEntity):
     """Representation of a group of blinds covers."""
@@ -325,48 +332,19 @@ class BlindsGroupCover(CoverEntity):
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open all covers in the group."""
         _LOGGER.info("Opening group: %s", self.name)
-        # Send commands with slight stagger for better synchronization
-        tasks = []
-        for i, member in enumerate(self._member_entities):
-            # Add 50ms delay between each command to allow controller to queue properly
-            async def delayed_open(entity, delay):
-                await asyncio.sleep(delay)
-                await entity.async_open_cover(**kwargs)
-            tasks.append(delayed_open(member, i * 0.05))
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*(member.async_open_cover(**kwargs) for member in self._member_entities))
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close all covers in the group."""
         _LOGGER.info("Closing group: %s", self.name)
-        # Send commands with slight stagger for better synchronization
-        tasks = []
-        for i, member in enumerate(self._member_entities):
-            async def delayed_close(entity, delay):
-                await asyncio.sleep(delay)
-                await entity.async_close_cover(**kwargs)
-            tasks.append(delayed_close(member, i * 0.05))
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*(member.async_close_cover(**kwargs) for member in self._member_entities))
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop all covers in the group."""
         _LOGGER.info("Stopping group: %s", self.name)
-        # Send commands with slight stagger for better synchronization
-        tasks = []
-        for i, member in enumerate(self._member_entities):
-            async def delayed_stop(entity, delay):
-                await asyncio.sleep(delay)
-                await entity.async_stop_cover(**kwargs)
-            tasks.append(delayed_stop(member, i * 0.05))
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*(member.async_stop_cover(**kwargs) for member in self._member_entities))
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Move all covers in the group to a specific position."""
         _LOGGER.info("Setting group %s to position: %s", self.name, kwargs.get("position"))
-        # Send commands with slight stagger for better synchronization
-        tasks = []
-        for i, member in enumerate(self._member_entities):
-            async def delayed_position(entity, delay, kw):
-                await asyncio.sleep(delay)
-                await entity.async_set_cover_position(**kw)
-            tasks.append(delayed_position(member, i * 0.05, kwargs))
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*(member.async_set_cover_position(**kwargs) for member in self._member_entities))
