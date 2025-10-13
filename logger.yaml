@@ -1,0 +1,26 @@
+# Logger configuration for Nice Blinds Controller integration
+#
+# To enable FULL DEBUG logging in Home Assistant, add this to your configuration.yaml:
+
+logger:
+  default: info
+  logs:
+    # Enable debug logging for the Nice Blinds Controller integration
+    custom_components.blinds_control: debug
+    custom_components.blinds_control.config_flow: debug
+    custom_components.blinds_control.cover: debug
+    custom_components.blinds_control.nice_protocol: debug
+
+# This will log:
+# - HTTP requests and responses (including full HTML content)
+# - Device discovery details
+# - Authentication attempts
+# - All commands sent to the controller
+# - HTML parsing and device detection
+#
+# After adding this, restart Home Assistant and check logs at:
+# Settings > System > Logs
+#
+# Or view real-time logs via command line:
+# docker logs -f homeassistant
+# (or your specific container/installation method)

@@ -1,0 +1,12 @@
+{
+  "domain": "blinds_control",
+  "name": "Nice Blinds Controller",
+  "version": "1.0.0",
+  "documentation": "https://github.com/laberge/nice-blinds-controller",
+  "issue_tracker": "https://github.com/laberge/nice-blinds-controller/issues",
+  "requirements": ["aiohttp"],
+  "codeowners": ["@laberge"],
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "icon": "mdi:blinds"
+}

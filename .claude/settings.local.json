@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:192.168.10.235)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd HTTP protocol support for Nice controller with device discovery\n\n- Add HTTP protocol type with multi-step configuration flow\n- Implement device discovery from Nice controller web interface\n- Parse device list from /dev_list.htm and convert to cover entities\n- Support Nice API format: /cgi/devcmd.xml?adr=1&ept=0F&cmd=XX\n  - Stop: cmd=02\n  - Open: cmd=03\n  - Close: cmd=04\n- Add BeautifulSoup4 and aiohttp dependencies\n- Update config flow with device selection interface\n- Support basic authentication for HTTP controller\n- Maintain backward compatibility with RF433 protocol\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Read(//private/var/folders/**)",
+      "Bash(git commit:*)",
+      "Bash(git tag:*)",
+      "Bash(gh release:*)",
+      "Bash(sips:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh repo view:*)",
+      "Bash(python3:*)",
+      "Read(//Users/aaron/Library/Mobile Documents/com~apple~CloudDocs/Downloads/**)",
+      "Bash(find:*)",
+      "Read(//Users/aaron/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

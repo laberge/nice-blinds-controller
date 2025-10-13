@@ -1,0 +1,548 @@
+#!/usr/bin/env python3
+"""Simple command interface for Nice blinds - use device names directly."""
+
+import asyncio
+import aiohttp
+import sys
+import os
+import xml.etree.ElementTree as ET
+import yaml
+
+# Configuration - Update these with your settings or use environment variables
+CONTROLLER_URL = os.getenv("BLINDS_URL", "http://192.168.10.235")
+USERNAME = os.getenv("BLINDS_USER", "aaron")
+PASSWORD = os.getenv("BLINDS_PASS", "")  # Set BLINDS_PASS env var or edit here
+
+# Group command mode: "sequential" for maximum reliability, "concurrent" for speed
+GROUP_MODE = os.getenv("BLINDS_GROUP_MODE", "concurrent")
+
+# Path to groups configuration file
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+GROUPS_FILE = os.path.join(SCRIPT_DIR, "blinds_groups.yaml")
+
+
+async def get_devices(base_url: str, username: str, password: str):
+    """Get all devices from the controller."""
+    url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
+    
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        auth = aiohttp.BasicAuth(username, password) if username and password else None
+        
+        async with session.get(url, auth=auth) as response:
+            response.raise_for_status()
+            xml_content = await response.text()
+            
+            root = ET.fromstring(xml_content)
+            device_elements = root.findall('.//device')
+            
+            devices = {}
+            for device_elem in device_elements:
+                installed = device_elem.get('installed', '0')
+                if installed != '1':
+                    continue
+                
+                adr = device_elem.get('adr', '0')
+                ept = device_elem.get('ept', '0')
+                desc = device_elem.get('desc', '')
+                
+                # Normalize: convert adr from hex to decimal, keep ept as uppercase hex
+                adr_dec = int(adr, 16)
+                ept_upper = ept.upper()
+                device_id = f"{adr_dec},{ept_upper}"
+                
+                # Store by name (case-insensitive, strip whitespace)
+                devices[desc.lower().strip()] = device_id
+            
+            return devices
+
+
+async def get_device_status(base_url: str, username: str, password: str, device_name: str = None):
+    """Get status of devices."""
+    url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
+    
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        auth = aiohttp.BasicAuth(username, password) if username and password else None
+        
+        async with session.get(url, auth=auth) as response:
+            response.raise_for_status()
+            xml_content = await response.text()
+            
+            root = ET.fromstring(xml_content)
+            device_elements = root.findall('.//device')
+            
+            # Status code mappings
+            status_map = {
+                "00": "Stopped",
+                "01": "Stopped",
+                "02": "Opening",
+                "03": "Closing",
+                "04": "Open (high limit)",
+                "05": "Closed (low limit)",
+            }
+            
+            devices = []
+            for device_elem in device_elements:
+                installed = device_elem.get('installed', '0')
+                if installed != '1':
+                    continue
+                
+                adr = device_elem.get('adr', '0')
+                ept = device_elem.get('ept', '0')
+                desc = device_elem.get('desc', '')
+                sta = device_elem.get('sta', '00')
+                pos = device_elem.get('pos', '255')
+                inp = device_elem.get('inp', '0')
+                
+                # If device_name specified, filter (case-insensitive, strip whitespace)
+                if device_name and desc.lower().strip() != device_name.lower().strip():
+                    continue
+                
+                # Normalize: convert adr from hex to decimal, keep ept as uppercase hex
+                adr_dec = int(adr, 16)
+                ept_upper = ept.upper()
+                device_id = f"{adr_dec},{ept_upper}"
+                
+                # Parse status (sta is already uppercase hex from XML)
+                status_text = status_map.get(sta.upper(), f"Unknown ({sta})")
+                position = "Unknown" if pos == "255" else f"{pos}%"
+                
+                devices.append({
+                    'name': desc.strip(),
+                    'id': device_id,
+                    'status': status_text,
+                    'position': position,
+                    'sta_code': sta.upper(),
+                    'pos_raw': pos,
+                })
+            
+            return devices
+
+
+def load_groups():
+    """Load groups from YAML configuration file."""
+    try:
+        if not os.path.exists(GROUPS_FILE):
+            return {}
+        
+        with open(GROUPS_FILE, 'r') as f:
+            config = yaml.safe_load(f)
+            return config.get('groups', {})
+    except Exception as e:
+        print(f"Warning: Could not load groups file: {e}")
+        return {}
+
+
+async def send_command(base_url: str, username: str, password: str, device_id: str, command: str):
+    """Send a command to a Nice blind."""
+    parts = device_id.split(",")
+    adr = parts[0]
+    ept = parts[1]
+    
+    cmd_codes = {"stop": "02", "open": "03", "close": "04"}
+    cmd = cmd_codes.get(command.lower())
+    
+    url = f"{base_url.rstrip('/')}/cgi/devcmd.xml?adr={adr}&ept={ept}&cmd={cmd}"
+    
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        auth = aiohttp.BasicAuth(username, password) if username and password else None
+        
+        async with session.get(url, auth=auth) as response:
+            response.raise_for_status()
+            return True
+
+
+async def send_group_command(group_name: str, command: str, config_url: str, config_user: str, config_pass: str):
+    """Send a command to a group of blinds with controlled concurrency for reliability."""
+    groups = load_groups()
+    
+    if group_name not in groups:
+        print(f"✗ Error: Group '{group_name}' not found")
+        print(f"\nAvailable groups:")
+        for name, info in groups.items():
+            print(f"  - {name}: {info.get('name', name)} ({len(info.get('devices', []))} devices)")
+        return False
+    
+    group = groups[group_name]
+    devices_to_control = group.get('devices', [])
+    
+    if not devices_to_control:
+        print(f"✗ Error: Group '{group_name}' has no devices")
+        return False
+    
+    # Get all devices to map names to IDs
+    all_devices = await get_devices(config_url, config_user, config_pass)
+    
+    print(f"\n{'='*60}")
+    print(f"{command.upper()} group: {group.get('name', group_name)}")
+    print(f"{'='*60}")
+    
+    # Send commands sequentially with delays for maximum reliability
+    timeout = aiohttp.ClientTimeout(total=10)
+    auth = aiohttp.BasicAuth(config_user, config_pass) if config_user and config_pass else None
+    
+    cmd_codes = {"stop": "02", "open": "03", "close": "04"}
+    cmd = cmd_codes.get(command.lower())
+    
+    results = []
+    
+    # Use a single session for all commands
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        for device_name in devices_to_control:
+            device_name_normalized = device_name.lower().strip()
+            
+            if device_name_normalized not in all_devices:
+                # Try to find a close match for better error reporting
+                available = list(all_devices.keys())
+                close_matches = [d for d in available if device_name_normalized.replace(' ', '') in d.replace(' ', '')]
+                if close_matches:
+                    results.append((device_name, False, f"Not found (similar: {close_matches[0]})"))
+                else:
+                    results.append((device_name, False, "Not found in controller"))
+                continue
+            
+            device_id = all_devices[device_name_normalized]
+            parts = device_id.split(",")
+            adr = parts[0]
+            ept = parts[1]
+            
+            url = f"{config_url.rstrip('/')}/cgi/devcmd.xml?adr={adr}&ept={ept}&cmd={cmd}"
+            
+            # Send command with retry
+            success = False
+            error_msg = ""
+            
+            for attempt in range(2):
+                try:
+                    async with session.get(url, auth=auth) as response:
+                        if response.status == 200:
+                            results.append((device_name, True, command))
+                            success = True
+                            break
+                        else:
+                            error_msg = f"HTTP {response.status}"
+                            if attempt == 0:
+                                await asyncio.sleep(0.3)  # Wait before retry
+                except asyncio.TimeoutError:
+                    error_msg = "Timeout"
+                    if attempt == 0:
+                        await asyncio.sleep(0.3)  # Wait before retry
+                except Exception as e:
+                    error_msg = str(e)
+                    if attempt == 0:
+                        await asyncio.sleep(0.3)  # Wait before retry
+            
+            if not success:
+                results.append((device_name, False, error_msg))
+            
+            # Wait between each device command to avoid overwhelming controller
+            await asyncio.sleep(0.15)
+    
+    # Display results
+    success_count = 0
+    fail_count = 0
+    
+    for result in results:
+        if isinstance(result, Exception):
+            print(f"  ✗ Error: {result}")
+            fail_count += 1
+        else:
+            device_name, success, message = result
+            if success:
+                print(f"  ✓ {device_name}: {message}")
+                success_count += 1
+            else:
+                print(f"  ✗ {device_name}: {message}")
+                fail_count += 1
+    
+    print(f"{'='*60}")
+    print(f"Results: {success_count} succeeded, {fail_count} failed")
+    print(f"{'='*60}\n")
+    
+    return fail_count == 0
+
+
+async def main_async(command: str, device_name: str, config_url: str, config_user: str, config_pass: str):
+    """Main async function."""
+    try:
+        # Get all devices
+        devices = await get_devices(config_url, config_user, config_pass)
+        
+        # Find device by name (case-insensitive, strip whitespace)
+        device_name_normalized = device_name.lower().strip()
+        if device_name_normalized not in devices:
+            print(f"✗ Error: Device '{device_name}' not found")
+            print(f"\nAvailable devices:")
+            for name in sorted(devices.keys()):
+                print(f"  - {name.title()}")
+            return False
+        
+        device_id = devices[device_name_normalized]
+        
+        # Send command
+        await send_command(config_url, config_user, config_pass, device_id, command)
+        
+        # Success message
+        print(f"✓ {command.upper()}: {device_name.title()}")
+        return True
+        
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        return False
+
+
+def print_usage():
+    """Print usage instructions."""
+    pass_status = "(set)" if PASSWORD else "(not configured)"
+    
+    print(f"""
+╔══════════════════════════════════════════════════════════════╗
+║              Nice Blinds - Simple Control                    ║
+╚══════════════════════════════════════════════════════════════╝
+
+Usage:
+  ./blinds <command> ["<device_name>"]
+  ./blinds <command>-group <group_name>
+
+Commands:
+  open   - Opens the blind
+  close  - Closes the blind
+  stop   - Stops the blind
+  status - Show status of all blinds (or specific blind)
+  list   - List all devices
+
+Group Commands (synchronized):
+  open-group <group>   - Opens all blinds in a group simultaneously
+  close-group <group>  - Closes all blinds in a group simultaneously
+  stop-group <group>   - Stops all blinds in a group simultaneously
+
+Examples:
+  ./blinds open "MBA 3"
+  ./blinds close "Kitchen 1"
+  ./blinds stop "Office 1"
+  ./blinds status              # Show all devices status
+  ./blinds status "Office 1"   # Show specific device status
+  ./blinds list
+  
+  # Group commands (all shades move together)
+  ./blinds open-group office   # Opens all 12 office blinds at once
+  ./blinds close-group sunroom # Closes all 5 sunroom blinds at once
+  ./blinds stop-group kitchen  # Stops all kitchen blinds
+
+Available Groups:
+  office, sunroom, kitchen, master, all
+
+Your Devices:
+  MBA 3, MBA 1, MBR 1, MBR 2, MBR 4
+  Sunroom 1, Sunroom 2, Sunroom 3, Sunroom 4, Sunroom 5
+  Kitchen 1, Kitchen 2
+  Office 1-12
+  Living Room
+
+Configuration:
+  Set BLINDS_PASS environment variable or edit PASSWORD at top of script.
+  
+  Current config:
+    URL: {CONTROLLER_URL}
+    User: {USERNAME}
+    Pass: {pass_status}
+
+  To configure:
+    export BLINDS_PASS="your_password"
+    Or edit PASSWORD variable in the script.
+""")
+
+
+async def list_devices_async(config_url: str, config_user: str, config_pass: str):
+    """List all devices."""
+    try:
+        devices = await get_devices(config_url, config_user, config_pass)
+        
+        print(f"\n{'='*60}")
+        print(f"Available Devices ({len(devices)} total)")
+        print(f"{'='*60}\n")
+        
+        for name in sorted(devices.keys()):
+            device_id = devices[name]
+            print(f"  {name.title():20} (ID: {device_id})")
+        
+        print(f"\n{'='*60}\n")
+        
+    except Exception as e:
+        print(f"✗ Error: {e}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print_usage()
+        sys.exit(1)
+    
+    command = sys.argv[1].lower()
+    
+    # Check password is set
+    if not PASSWORD:
+        print("✗ Error: Password not configured")
+        print("\nSet your password using one of these methods:")
+        print("  1. Environment variable: export BLINDS_PASS='your_password'")
+        print("  2. Edit the script and set PASSWORD = 'your_password'")
+        print("  3. Add to your ~/.bashrc or ~/.zshrc:")
+        print("     export BLINDS_PASS='your_password'")
+        sys.exit(1)
+    
+    # Handle list command
+    if command == "list":
+        asyncio.run(list_devices_async(CONTROLLER_URL, USERNAME, PASSWORD))
+        sys.exit(0)
+    
+    # Handle status command
+    if command == "status":
+        device_name = sys.argv[2] if len(sys.argv) > 2 else None
+        
+        async def show_status():
+            try:
+                devices = await get_device_status(CONTROLLER_URL, USERNAME, PASSWORD, device_name)
+                
+                # Sort devices by name for better readability
+                devices.sort(key=lambda d: d['name'])
+                
+                # Calculate column widths (content between borders)
+                WIDTH = 63
+                
+                print(f"\n╔{'═'*WIDTH}╗")
+                print(f"║{'NICE BLINDS STATUS':^{WIDTH}}║")
+                print(f"╠{'═'*WIDTH}╣")
+                print(f"║ {'Device':<22} {'Status':<8} {'Pos':<5} {'Progress':<12} {'ID':<10} ║")
+                print(f"╠{'═'*WIDTH}╣")
+                
+                for device in devices:
+                    # Determine status
+                    if device['sta_code'] in ['04']:  # Open
+                        status = "OPEN    "
+                        bar = "[##########]"
+                    elif device['sta_code'] in ['05']:  # Closed
+                        status = "CLOSED  "
+                        bar = "[          ]"
+                    elif device['sta_code'] in ['02']:  # Opening
+                        status = "OPENING "
+                        pos_num = int(device['pos_raw']) if device['pos_raw'] != '255' else 50
+                        filled = int(pos_num / 10)
+                        bar = "[" + ("#" * filled) + (" " * (10 - filled)) + "]"
+                    elif device['sta_code'] in ['03']:  # Closing
+                        status = "CLOSING "
+                        pos_num = int(device['pos_raw']) if device['pos_raw'] != '255' else 50
+                        filled = int(pos_num / 10)
+                        bar = "[" + ("#" * filled) + (" " * (10 - filled)) + "]"
+                    else:
+                        status = "UNKNOWN "
+                        bar = "[??????????]"
+                    
+                    # Format position
+                    pos_pct = device['position'] if device['position'] != "Unknown" else "--   "
+                    
+                    # Build row - all ASCII for perfect alignment
+                    print(f"║ {device['name']:<22} {status:<8} {pos_pct:<5} {bar:<12} {device['id']:<10} ║")
+                
+                print(f"╠{'═'*WIDTH}╣")
+                
+                # Show summary
+                open_count = sum(1 for d in devices if d['sta_code'] == '04')
+                closed_count = sum(1 for d in devices if d['sta_code'] == '05')
+                moving_count = sum(1 for d in devices if d['sta_code'] in ['02', '03'])
+                total = len(devices)
+                
+                summary = f"Total: {total}  |  Open: {open_count}  |  Closed: {closed_count}  |  Moving: {moving_count}"
+                print(f"║ {summary:<{WIDTH-2}} ║")
+                print(f"╚{'═'*WIDTH}╝\n")
+                
+                # Show groups status if no specific device requested
+                if not device_name:
+                    groups = load_groups()
+                    if groups:
+                        # Create device lookup dict (normalized names)
+                        device_map = {d['name'].lower().strip(): d for d in devices}
+                        
+                        print(f"╔{'═'*WIDTH}╗")
+                        print(f"║{'GROUP STATUS':^{WIDTH}}║")
+                        print(f"╠{'═'*WIDTH}╣")
+                        print(f"║ {'Group':<18} {'Devices':<7} {'Open':<4} {'Closed':<6} {'Moving':<4} {'Status':<13} ║")
+                        print(f"╠{'═'*WIDTH}╣")
+                        
+                        for group_id, group_info in groups.items():
+                            group_name = group_info.get('name', group_id)
+                            device_names = group_info.get('devices', [])
+                            
+                            # Calculate group stats
+                            group_devices = []
+                            for dev_name in device_names:
+                                dev = device_map.get(dev_name.lower().strip())
+                                if dev:
+                                    group_devices.append(dev)
+                            
+                            if not group_devices:
+                                continue
+                            
+                            g_total = len(group_devices)
+                            g_open = sum(1 for d in group_devices if d['sta_code'] == '04')
+                            g_closed = sum(1 for d in group_devices if d['sta_code'] == '05')
+                            g_moving = sum(1 for d in group_devices if d['sta_code'] in ['02', '03'])
+                            
+                            # Determine overall status
+                            if g_moving > 0:
+                                overall = "Moving"
+                            elif g_open == g_total:
+                                overall = "All Open"
+                            elif g_closed == g_total:
+                                overall = "All Closed"
+                            elif g_open > 0 and g_closed > 0:
+                                overall = "Mixed"
+                            else:
+                                overall = "Unknown"
+                            
+                            print(f"║ {group_name:<18} {g_total:<7} {g_open:<4} {g_closed:<6} {g_moving:<4} {overall:<13} ║")
+                        
+                        print(f"╚{'═'*WIDTH}╝\n")
+                
+            except Exception as e:
+                print(f"✗ Error: {e}")
+        
+        asyncio.run(show_status())
+        sys.exit(0)
+    
+    # Handle group commands (e.g., open-group, close-group, stop-group)
+    if command.endswith("-group"):
+        if len(sys.argv) < 3:
+            groups = load_groups()
+            print(f"✗ Error: Group name required")
+            print(f"\nAvailable groups:")
+            for name, info in groups.items():
+                print(f"  - {name}: {info.get('name', name)} ({len(info.get('devices', []))} devices)")
+            sys.exit(1)
+        
+        group_name = sys.argv[2]
+        base_command = command.replace("-group", "")
+        
+        if base_command not in ["open", "close", "stop"]:
+            print(f"✗ Error: Invalid group command '{command}'")
+            print("Valid group commands: open-group, close-group, stop-group")
+            sys.exit(1)
+        
+        success = asyncio.run(send_group_command(group_name, base_command, CONTROLLER_URL, USERNAME, PASSWORD))
+        sys.exit(0 if success else 1)
+    
+    # Handle device commands
+    if len(sys.argv) < 3:
+        print_usage()
+        sys.exit(1)
+    
+    device_name = sys.argv[2]
+    
+    if command not in ["open", "close", "stop"]:
+        print(f"✗ Error: Invalid command '{command}'")
+        print("Valid commands: open, close, stop, status, list, open-group, close-group, stop-group")
+        sys.exit(1)
+    
+    success = asyncio.run(main_async(command, device_name, CONTROLLER_URL, USERNAME, PASSWORD))
+    sys.exit(0 if success else 1)
+
