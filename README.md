@@ -26,12 +26,15 @@ A Home Assistant custom integration for controlling blinds and motors via HTTP/n
 
 1. Ensure [HACS](https://hacs.xyz/) is installed in your Home Assistant instance
 2. Open HACS in your Home Assistant instance
-3. Go to "Integrations"
-4. Click the three dots in the top right and select "Custom repositories"
-5. Add this repository URL: `https://github.com/laberge/nice-blinds-controller`
-6. Select "Integration" as the category
-7. Click "Install"
-8. Restart Home Assistant
+3. Click the **three dots (⋮)** in the top right corner
+4. Select **"Custom repositories"**
+5. Add this repository:
+   - **Repository**: `laberge/nice-blinds-controller`
+   - **Category**: `Integration`
+6. Click **"Add"**
+7. Find "Nice Blinds Controller" in HACS
+8. Click **"Download"**
+9. Restart Home Assistant
 
 ### Manual Installation
 
@@ -55,13 +58,25 @@ A Home Assistant custom integration for controlling blinds and motors via HTTP/n
 5. Click **Submit**
 6. The integration will automatically discover all connected devices
 7. **Select devices** you want to add to Home Assistant
-8. **Review auto-generated groups** - The integration automatically creates groups based on device naming patterns:
-   - Devices like "Office 1", "Office 2", "Office 3" → "Office Blinds" group
-   - Devices like "MBA 1", "MBA 3" → "MBA Blinds" group
-   - All devices → "All Blinds" group (if 3+ devices)
+8. **Review controller groups** - The integration discovers groups configured on your Nice controller:
+   - Groups are read directly from the controller (e.g., "Office", "Sunroom", "Kitchen")
+   - Create and manage groups in your controller's web interface
+   - Groups execute commands at the hardware level (truly simultaneous)
 9. Click **Submit** to complete setup
 
-**Group entities** appear as separate cover entities that control all member blinds simultaneously with reliable sequential execution.
+**Group entities** appear as separate cover entities that send commands to your controller's native groups for instant, simultaneous control of all member devices.
+
+### Refreshing Devices & Groups
+
+When you add new devices or create new groups on your controller:
+
+1. Go to **Settings** → **Devices & Services**  
+2. Find **Nice Blinds Controller**
+3. Click **Configure** (gear icon)
+4. Select **"Refresh Devices & Groups"**
+5. Click **"Refresh Now"**
+
+The integration will re-discover everything from the controller and reload automatically - no need to reinstall!
 
 #### Supported Controllers
 
@@ -138,14 +153,14 @@ automation:
 
 ### CLI Troubleshooting
 
-**Group commands not controlling all blinds:**
-1. Run the verification tool to check device names:
+**Group commands not working:**
+1. List groups to verify they exist on controller:
    ```bash
-   ./verify_groups.py
+   blinds list-groups
    ```
-2. Ensure device names in `blinds_groups.yaml` exactly match controller names
-3. Check that all devices are powered on and responding
-4. Try individual commands first to verify connectivity:
+2. Ensure group is configured in controller's web interface: `http://192.168.10.235/grp_list.htm`
+3. Group names are case-insensitive but must match controller exactly
+4. Try individual device commands first to verify connectivity:
    ```bash
    blinds status
    ```
@@ -153,7 +168,6 @@ automation:
 **Device not found errors:**
 - Run `blinds list` to see exact device names from controller
 - Device names are case-insensitive but must match exactly
-- Check for extra spaces or typos in `blinds_groups.yaml`
 
 **Password not configured:**
 - Set environment variable: `export BLINDS_PASS="your_password"`
@@ -204,20 +218,6 @@ Then restart Home Assistant. Debug logs will show HTTP requests, device discover
 
 ## Advanced Configuration
 
-### Managing Groups
-
-After initial setup, you can manage your groups:
-
-1. Go to **Settings** → **Devices & Services**
-2. Find your **Nice Blinds Controller** integration
-3. Click **Configure** (gear icon)
-4. Choose an action:
-   - **Add new group** - Create additional groups
-   - **Edit existing group** - Modify group name or members
-   - **Delete a group** - Remove groups you don't need
-
-Groups are automatically updated when you save changes, and new group entities will appear in Home Assistant.
-
 ### Multiple Controllers
 
 You can add multiple controllers by adding the integration multiple times. Each instance will discover and manage its own set of devices.
@@ -257,12 +257,13 @@ blinds list                # List all available devices
 
 ### Group Control
 ```bash
-# Control multiple blinds simultaneously
-blinds open-group office   # Opens all 12 office blinds together
-blinds close-group sunroom # Closes all 5 sunroom blinds together
-blinds stop-group kitchen  # Stops all kitchen blinds
+# Control multiple blinds simultaneously using controller's native groups
+blinds list-groups         # List all groups from controller
+blinds open-group "Office"   # Opens all office blinds instantly (hardware-synchronized)
+blinds close-group "Sunroom" # Closes all sunroom blinds instantly
+blinds stop-group "Kitchen"  # Stops all kitchen blinds
 
-# Pre-configured groups: office, sunroom, kitchen, master, all
+# Groups are configured in your Nice controller's web interface
 ```
 
 ### Quick Setup
@@ -272,44 +273,24 @@ blinds stop-group kitchen  # Stops all kitchen blinds
 
 ### Features
 - ✅ Control blinds using friendly device names
-- ✅ **Group commands** - Control multiple blinds simultaneously
-- ✅ **Sequential execution** - 100% reliable group operations
-- ✅ **Status display** - View individual and group status at a glance
+- ✅ **Native group commands** - Uses controller's hardware groups for true simultaneous execution
+- ✅ **Instant group control** - All devices execute at exactly the same time
+- ✅ **Status display** - View individual devices and controller groups
 - ✅ Dotfiles integration support
 - ✅ Secure password management (environment variables, keychain, password managers)
 
 ### Group Configuration
 
-Groups are defined in `blinds_groups.yaml`:
+Groups are configured directly in your **Nice controller's web interface**:
 
-```yaml
-groups:
-  office:
-    name: "Office Blinds"
-    devices:
-      - "Office 1"
-      - "Office 2"
-      # ... up to 12 devices
-  
-  sunroom:
-    name: "Sunroom Blinds"
-    devices:
-      - "Sunroom 1"
-      - "Sunroom 2"
-      # ... etc
-```
+1. Open your controller's web UI: `http://192.168.10.235/grp_list.htm`
+2. Create and manage groups
+3. Groups are instantly available to the CLI (no configuration files needed!)
 
-Edit this file to customize your groups!
-
-### Verify Group Setup
-
-Use the verification tool to ensure all devices are configured correctly:
-
+**List available groups:**
 ```bash
-./verify_groups.py
+./blinds list-groups
 ```
-
-This will check that all devices in your groups can be found on the controller.
 
 ### Documentation
 - [Quick Start Guide](QUICK_START.md) - Get started in 30 seconds
@@ -319,24 +300,31 @@ This will check that all devices in your groups can be found on the controller.
 ### Example Usage
 
 ```bash
-# Morning routine - open all sunroom blinds
-blinds open-group sunroom
+# List all controller groups
+blinds list-groups
+
+# Morning routine - open all sunroom blinds (truly simultaneous)
+blinds open-group "Sunroom"
 
 # Afternoon - close office blinds during presentation
-blinds close-group office
+blinds close-group "Office"
 
-# Evening - close everything
-blinds close-group all
+# Evening - use a custom "all" group you created on controller
+blinds close-group "All Blinds"
 
-# Check status of all devices and groups
+# Check status of all devices and controller groups
 blinds status
 ```
 
-The `status` command displays two tables:
-1. **Individual Device Status** - Shows each blind's current state, position, and ID
-2. **Group Status Summary** - Shows aggregated status for each group (all open, all closed, mixed, or moving)
+The `status` command displays:
+1. **Individual Device Status** - Each blind's current state, position, and ID
+2. **Controller Groups** - All groups configured on your Nice controller
 
-This makes it easy to see at a glance whether your group commands worked!
+**Advantages of controller groups:**
+- ⚡ True hardware-level simultaneous execution
+- 🎯 No delays or sequential processing needed
+- 🔄 Automatically synced when you edit groups on the controller
+- ✅ 100% reliable operation
 
 ## Disclaimer
 

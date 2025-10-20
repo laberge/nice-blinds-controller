@@ -54,13 +54,13 @@
         }
       },
       "review_groups": {
-        "title": "Review Auto-Generated Groups",
-        "description": "Based on your device names, {group_count} groups have been automatically created:\n\n{groups}\n\nThese groups will appear as separate cover entities in Home Assistant.",
+        "title": "Review Controller Groups",
+        "description": "Found {group_count} groups configured on your Nice controller:\n\n{groups}\n\nThese groups will appear as separate cover entities in Home Assistant. Commands sent to groups execute simultaneously on all member devices at the hardware level.",
         "data": {
-          "use_groups": "Create These Groups"
+          "use_groups": "Add These Groups"
         },
         "data_description": {
-          "use_groups": "Enable to create these groups, disable to skip group creation"
+          "use_groups": "Enable to add controller groups as entities, disable to skip"
         }
       }
     },
@@ -77,7 +77,27 @@
     }
   },
   "options": {
+    "error": {
+      "refresh_failed": "Failed to refresh devices and groups. Error: {error}"
+    },
     "step": {
+      "main_menu": {
+        "title": "Integration Options",
+        "description": "Manage your Nice Blinds Controller integration.\n\n{info}",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "refresh_devices": {
+        "title": "Refresh Devices & Groups",
+        "description": "Re-discover all devices and groups from the controller.\n\nCurrent: {device_count} devices, {group_count} groups\n\nThis will update your integration with any new devices or groups you've added to the controller.",
+        "data": {
+          "confirm_refresh": "Refresh Now"
+        },
+        "data_description": {
+          "confirm_refresh": "Click to refresh devices and groups from the controller"
+        }
+      },
       "manage_groups": {
         "title": "Manage Groups",
         "description": "Current groups:\n{groups}",

@@ -120,18 +120,37 @@ async def get_device_status(base_url: str, username: str, password: str, device_
             return devices
 
 
-def load_groups():
-    """Load groups from YAML configuration file."""
-    try:
-        if not os.path.exists(GROUPS_FILE):
-            return {}
+async def get_controller_groups(config_url: str, config_user: str, config_pass: str):
+    """Get groups from the controller."""
+    url = f"{config_url.rstrip('/')}/cgi/grplst.xml"
+    
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        auth = aiohttp.BasicAuth(config_user, config_pass) if config_user and config_pass else None
         
-        with open(GROUPS_FILE, 'r') as f:
-            config = yaml.safe_load(f)
-            return config.get('groups', {})
-    except Exception as e:
-        print(f"Warning: Could not load groups file: {e}")
-        return {}
+        async with session.get(url, auth=auth) as response:
+            response.raise_for_status()
+            xml_content = await response.text()
+            
+            root = ET.fromstring(xml_content)
+            group_elements = root.findall('.//group')
+            
+            groups = {}
+            for group_elem in group_elements:
+                enabled = group_elem.get('enabled', '0')
+                if enabled != '1':
+                    continue
+                
+                num = group_elem.get('num', '0')
+                desc = group_elem.get('desc', f'Group {num}')
+                
+                # Store by name (case-insensitive, normalized)
+                groups[desc.lower().strip()] = {
+                    'num': num,
+                    'name': desc,
+                }
+            
+            return groups
 
 
 async def send_command(base_url: str, username: str, password: str, device_id: str, command: str):
@@ -155,113 +174,73 @@ async def send_command(base_url: str, username: str, password: str, device_id: s
 
 
 async def send_group_command(group_name: str, command: str, config_url: str, config_user: str, config_pass: str):
-    """Send a command to a group of blinds with controlled concurrency for reliability."""
-    groups = load_groups()
+    """Send a command to a controller group using native group commands."""
+    # Get groups from controller
+    groups = await get_controller_groups(config_url, config_user, config_pass)
     
-    if group_name not in groups:
-        print(f"✗ Error: Group '{group_name}' not found")
+    group_name_normalized = group_name.lower().strip()
+    
+    if group_name_normalized not in groups:
+        print(f"✗ Error: Group '{group_name}' not found on controller")
         print(f"\nAvailable groups:")
-        for name, info in groups.items():
-            print(f"  - {name}: {info.get('name', name)} ({len(info.get('devices', []))} devices)")
+        for group_info in groups.values():
+            print(f"  - {group_info['name']} (#{group_info['num']})")
         return False
     
-    group = groups[group_name]
-    devices_to_control = group.get('devices', [])
-    
-    if not devices_to_control:
-        print(f"✗ Error: Group '{group_name}' has no devices")
-        return False
-    
-    # Get all devices to map names to IDs
-    all_devices = await get_devices(config_url, config_user, config_pass)
+    group = groups[group_name_normalized]
+    group_num = group['num']
     
     print(f"\n{'='*60}")
-    print(f"{command.upper()} group: {group.get('name', group_name)}")
+    print(f"{command.upper()} controller group: {group['name']} (#{group_num})")
     print(f"{'='*60}")
+    print(f"\n  NOTE: Group executes actions programmed in controller.")
+    print(f"        To verify/edit group devices, visit:")
+    print(f"        http://192.168.10.235/grp_list.htm")
+    print()
     
-    # Send commands sequentially with delays for maximum reliability
+    # Map commands to Nice protocol data codes
+    cmd_data = {
+        "stop": "02000000",
+        "open": "03000000",
+        "close": "04000000",
+    }
+    
+    dat = cmd_data.get(command.lower())
+    if not dat:
+        print(f"✗ Error: Unknown command '{command}'")
+        return False
+    
+    # Send group command using controller's native group API
+    url = f"{config_url.rstrip('/')}/cgi/grpcmd.xml?req=R&num={group_num}&dat={dat}"
+    
     timeout = aiohttp.ClientTimeout(total=10)
-    auth = aiohttp.BasicAuth(config_user, config_pass) if config_user and config_pass else None
-    
-    cmd_codes = {"stop": "02", "open": "03", "close": "04"}
-    cmd = cmd_codes.get(command.lower())
-    
-    results = []
-    
-    # Use a single session for all commands
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        for device_name in devices_to_control:
-            device_name_normalized = device_name.lower().strip()
-            
-            if device_name_normalized not in all_devices:
-                # Try to find a close match for better error reporting
-                available = list(all_devices.keys())
-                close_matches = [d for d in available if device_name_normalized.replace(' ', '') in d.replace(' ', '')]
-                if close_matches:
-                    results.append((device_name, False, f"Not found (similar: {close_matches[0]})"))
+        auth = aiohttp.BasicAuth(config_user, config_pass) if config_user and config_pass else None
+        
+        try:
+            async with session.get(url, auth=auth) as response:
+                response.raise_for_status()
+                xml_content = await response.text()
+                
+                # Parse response
+                root = ET.fromstring(xml_content)
+                result = root.findtext('.//result', '0')
+                
+                if result == '0':
+                    print(f"  ✓ Group command sent to controller")
+                    print(f"  ✓ Devices in group are executing")
+                    print(f"\n  Run './blinds status' to verify results")
+                    print(f"{'='*60}\n")
+                    return True
                 else:
-                    results.append((device_name, False, "Not found in controller"))
-                continue
-            
-            device_id = all_devices[device_name_normalized]
-            parts = device_id.split(",")
-            adr = parts[0]
-            ept = parts[1]
-            
-            url = f"{config_url.rstrip('/')}/cgi/devcmd.xml?adr={adr}&ept={ept}&cmd={cmd}"
-            
-            # Send command with retry
-            success = False
-            error_msg = ""
-            
-            for attempt in range(2):
-                try:
-                    async with session.get(url, auth=auth) as response:
-                        if response.status == 200:
-                            results.append((device_name, True, command))
-                            success = True
-                            break
-                        else:
-                            error_msg = f"HTTP {response.status}"
-                            if attempt == 0:
-                                await asyncio.sleep(0.3)  # Wait before retry
-                except asyncio.TimeoutError:
-                    error_msg = "Timeout"
-                    if attempt == 0:
-                        await asyncio.sleep(0.3)  # Wait before retry
-                except Exception as e:
-                    error_msg = str(e)
-                    if attempt == 0:
-                        await asyncio.sleep(0.3)  # Wait before retry
-            
-            if not success:
-                results.append((device_name, False, error_msg))
-            
-            # Wait between each device command to avoid overwhelming controller
-            await asyncio.sleep(0.15)
-    
-    # Display results
-    success_count = 0
-    fail_count = 0
-    
-    for result in results:
-        if isinstance(result, Exception):
-            print(f"  ✗ Error: {result}")
-            fail_count += 1
-        else:
-            device_name, success, message = result
-            if success:
-                print(f"  ✓ {device_name}: {message}")
-                success_count += 1
-            else:
-                print(f"  ✗ {device_name}: {message}")
-                fail_count += 1
-    
-    print(f"{'='*60}")
-    print(f"Results: {success_count} succeeded, {fail_count} failed")
-    print(f"{'='*60}\n")
-    
-    return fail_count == 0
+                    print(f"  ✗ Controller returned result: {result}")
+                    print(f"{'='*60}\n")
+                    return False
+                    
+        except Exception as e:
+            print(f"  ✗ Error: {e}")
+            print(f"{'='*60}\n")
+            return False
 
 
 async def main_async(command: str, device_name: str, config_url: str, config_user: str, config_pass: str):
@@ -312,11 +291,14 @@ Commands:
   stop   - Stops the blind
   status - Show status of all blinds (or specific blind)
   list   - List all devices
+  list-groups - List all controller groups
 
-Group Commands (synchronized):
-  open-group <group>   - Opens all blinds in a group simultaneously
-  close-group <group>  - Closes all blinds in a group simultaneously
-  stop-group <group>   - Stops all blinds in a group simultaneously
+Group Commands (hardware-synchronized):
+  open-group <group>   - Opens all blinds in a group (truly simultaneous)
+  close-group <group>  - Closes all blinds in a group (truly simultaneous)
+  stop-group <group>   - Stops all blinds in a group (truly simultaneous)
+  
+  Groups are configured on your Nice controller and execute at the hardware level.
 
 Examples:
   ./blinds open "MBA 3"
@@ -325,14 +307,16 @@ Examples:
   ./blinds status              # Show all devices status
   ./blinds status "Office 1"   # Show specific device status
   ./blinds list
+  ./blinds list-groups         # List all controller groups
   
-  # Group commands (all shades move together)
-  ./blinds open-group office   # Opens all 12 office blinds at once
-  ./blinds close-group sunroom # Closes all 5 sunroom blinds at once
-  ./blinds stop-group kitchen  # Stops all kitchen blinds
+  # Group commands (truly simultaneous via controller)
+  ./blinds open-group "Office"   # Opens all office blinds instantly
+  ./blinds close-group "Sunroom" # Closes all sunroom blinds instantly
+  ./blinds stop-group "Kitchen"  # Stops all kitchen blinds
 
-Available Groups:
-  office, sunroom, kitchen, master, all
+Configure Groups:
+  Groups are managed in your Nice controller's web interface at:
+  http://192.168.10.235/grp_list.htm
 
 Your Devices:
   MBA 3, MBA 1, MBR 1, MBR 2, MBR 4
@@ -374,6 +358,29 @@ async def list_devices_async(config_url: str, config_user: str, config_pass: str
         print(f"✗ Error: {e}")
 
 
+async def list_groups_async(config_url: str, config_user: str, config_pass: str):
+    """List all controller groups."""
+    try:
+        groups = await get_controller_groups(config_url, config_user, config_pass)
+        
+        print(f"\n{'='*60}")
+        print(f"Controller Groups ({len(groups)} total)")
+        print(f"{'='*60}\n")
+        
+        for group_info in sorted(groups.values(), key=lambda g: int(g['num'])):
+            print(f"  {group_info['name']:30} (Group #{group_info['num']})")
+        
+        print(f"\n{'='*60}")
+        print(f"Use: ./blinds <open|close|stop>-group \"<group name>\"")
+        print(f"\nNote: Groups execute actions programmed in your controller.")
+        print(f"      To verify/edit which devices are in each group:")
+        print(f"      http://192.168.10.235/grp_list.htm")
+        print(f"{'='*60}\n")
+        
+    except Exception as e:
+        print(f"✗ Error: {e}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print_usage()
@@ -394,6 +401,11 @@ if __name__ == "__main__":
     # Handle list command
     if command == "list":
         asyncio.run(list_devices_async(CONTROLLER_URL, USERNAME, PASSWORD))
+        sys.exit(0)
+    
+    # Handle list-groups command
+    if command == "list-groups":
+        asyncio.run(list_groups_async(CONTROLLER_URL, USERNAME, PASSWORD))
         sys.exit(0)
     
     # Handle status command
@@ -456,53 +468,28 @@ if __name__ == "__main__":
                 print(f"║ {summary:<{WIDTH-2}} ║")
                 print(f"╚{'═'*WIDTH}╝\n")
                 
-                # Show groups status if no specific device requested
+                # Show controller groups if no specific device requested
                 if not device_name:
-                    groups = load_groups()
-                    if groups:
-                        # Create device lookup dict (normalized names)
-                        device_map = {d['name'].lower().strip(): d for d in devices}
-                        
-                        print(f"╔{'═'*WIDTH}╗")
-                        print(f"║{'GROUP STATUS':^{WIDTH}}║")
-                        print(f"╠{'═'*WIDTH}╣")
-                        print(f"║ {'Group':<18} {'Devices':<7} {'Open':<4} {'Closed':<6} {'Moving':<4} {'Status':<13} ║")
-                        print(f"╠{'═'*WIDTH}╣")
-                        
-                        for group_id, group_info in groups.items():
-                            group_name = group_info.get('name', group_id)
-                            device_names = group_info.get('devices', [])
+                    try:
+                        groups = await get_controller_groups(CONTROLLER_URL, USERNAME, PASSWORD)
+                        if groups:
+                            print(f"╔{'═'*WIDTH}╗")
+                            print(f"║{'CONTROLLER GROUPS':^{WIDTH}}║")
+                            print(f"╠{'═'*WIDTH}╣")
+                            print(f"║ {'Group Name':<30} {'Group #':<28} ║")
+                            print(f"╠{'═'*WIDTH}╣")
                             
-                            # Calculate group stats
-                            group_devices = []
-                            for dev_name in device_names:
-                                dev = device_map.get(dev_name.lower().strip())
-                                if dev:
-                                    group_devices.append(dev)
+                            for group_info in groups.values():
+                                group_name = group_info['name']
+                                group_num = f"#{group_info['num']}"
+                                print(f"║ {group_name:<30} {group_num:<28} ║")
                             
-                            if not group_devices:
-                                continue
-                            
-                            g_total = len(group_devices)
-                            g_open = sum(1 for d in group_devices if d['sta_code'] == '04')
-                            g_closed = sum(1 for d in group_devices if d['sta_code'] == '05')
-                            g_moving = sum(1 for d in group_devices if d['sta_code'] in ['02', '03'])
-                            
-                            # Determine overall status
-                            if g_moving > 0:
-                                overall = "Moving"
-                            elif g_open == g_total:
-                                overall = "All Open"
-                            elif g_closed == g_total:
-                                overall = "All Closed"
-                            elif g_open > 0 and g_closed > 0:
-                                overall = "Mixed"
-                            else:
-                                overall = "Unknown"
-                            
-                            print(f"║ {group_name:<18} {g_total:<7} {g_open:<4} {g_closed:<6} {g_moving:<4} {overall:<13} ║")
-                        
-                        print(f"╚{'═'*WIDTH}╝\n")
+                            print(f"╠{'═'*WIDTH}╣")
+                            usage_text = 'Use: ./blinds <cmd>-group "<name>"'
+                            print(f"║ {usage_text:<{WIDTH-2}} ║")
+                            print(f"╚{'═'*WIDTH}╝\n")
+                    except Exception:
+                        pass  # Groups are optional, don't error if unavailable
                 
             except Exception as e:
                 print(f"✗ Error: {e}")
@@ -513,11 +500,9 @@ if __name__ == "__main__":
     # Handle group commands (e.g., open-group, close-group, stop-group)
     if command.endswith("-group"):
         if len(sys.argv) < 3:
-            groups = load_groups()
             print(f"✗ Error: Group name required")
-            print(f"\nAvailable groups:")
-            for name, info in groups.items():
-                print(f"  - {name}: {info.get('name', name)} ({len(info.get('devices', []))} devices)")
+            print(f"\nRun './blinds list-groups' to see available groups")
+            print(f"Or configure groups in controller web UI: http://192.168.10.235/grp_list.htm")
             sys.exit(1)
         
         group_name = sys.argv[2]

@@ -62,16 +62,20 @@ You should see all 25 of your devices listed.
 ### Group Commands
 
 ```bash
-# Open all blinds in a group simultaneously
-./blinds open-group office
+# List all controller groups
+./blinds list-groups
 
-# Close all blinds in a group simultaneously
-./blinds close-group sunroom
+# Open all blinds in a group (truly simultaneous via hardware)
+./blinds open-group "Office"
+
+# Close all blinds in a group
+./blinds close-group "Sunroom"
 
 # Stop all blinds in a group
-./blinds stop-group kitchen
+./blinds stop-group "Kitchen"
 
-# Available groups: office, sunroom, kitchen, master, all
+# Groups are configured in your Nice controller's web interface
+# Commands execute at the hardware level for instant, synchronized operation
 ```
 
 ### Your Device Names
@@ -122,11 +126,14 @@ The script uses these environment variables (or edit the script directly):
 ## Examples
 
 ```bash
-# Morning routine - open all sunroom blinds at once
-./blinds open-group sunroom
+# List all groups configured on your controller
+./blinds list-groups
+
+# Morning routine - open all sunroom blinds (hardware-synchronized)
+./blinds open-group "Sunroom"
 
 # Close all office blinds for presentation
-./blinds close-group office
+./blinds close-group "Office"
 
 # Check status of all devices and groups
 ./blinds status
@@ -136,6 +143,39 @@ The script uses these environment variables (or edit the script directly):
 ./blinds close "Kitchen 1"
 ./blinds stop "Office 1"
 ```
+
+## Configuring Groups
+
+Groups are managed in your Nice controller's web interface:
+
+1. Open: `http://192.168.10.235/grp_list.htm` (use your controller's IP)
+2. Click "New" to create a group
+3. Add devices to the group
+4. Save the group
+5. Groups are instantly available to the CLI - no restart needed!
+
+When you execute a group command, the controller sends the command to all devices simultaneously at the hardware level for perfect synchronization.
+
+### How Controller Groups Work
+
+Nice controller groups execute **pre-programmed actions**. When you send a group command:
+
+1. The controller receives your command (open/close/stop)
+2. The controller executes the actions programmed for that group
+3. Each device in the group receives its pre-programmed command **simultaneously**
+
+**Important:**
+- Groups execute whatever actions were programmed in the controller
+- A group may include devices from multiple rooms
+- Different devices may have different actions (some open, some close)
+- This is controlled in the Nice controller's web interface, not in this CLI
+
+**To see exactly what a group will do:**
+- Open your controller's web UI: `http://192.168.10.235/grp_list.htm`
+- View or edit the group to see which devices and actions are configured
+
+**Recommendation:**
+For predictable behavior, create groups in your controller where all devices perform the same action (all open, all close, etc.).
 
 ## Troubleshooting
 

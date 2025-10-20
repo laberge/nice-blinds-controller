@@ -58,24 +58,18 @@ async def async_setup_entry(
         entities.append(entity)
         device_entities[device["id"]] = entity
 
-    # Create group entities if configured
+    # Create group entities if configured (controller native groups)
     groups = config_entry.data.get("groups", [])
     for group in groups:
         group_name = group.get("name", "")
-        group_device_ids = group.get("devices", [])
+        group_num = group.get("num", "")
         
-        # Get the actual entity objects for the group members
-        member_entities = [
-            device_entities[device_id]
-            for device_id in group_device_ids
-            if device_id in device_entities
-        ]
-        
-        if member_entities:
+        if group_num:
             group_entity = BlindsGroupCover(
                 name=group_name,
-                unique_id=f"{config_entry.entry_id}_group_{group_name.lower().replace(' ', '_')}",
-                member_entities=member_entities,
+                unique_id=f"{config_entry.entry_id}_group_{group_num}",
+                group_num=group_num,
+                controller=controller,
                 entry_id=config_entry.entry_id,
             )
             entities.append(group_entity)
@@ -259,112 +253,83 @@ class BlindsCover(CoverEntity):
 
 
 class BlindsGroupCover(CoverEntity):
-    """Representation of a group of blinds covers."""
+    """Representation of a Nice controller group."""
 
     _attr_device_class = CoverDeviceClass.BLIND
     _attr_supported_features = (
         CoverEntityFeature.OPEN
         | CoverEntityFeature.CLOSE
         | CoverEntityFeature.STOP
-        | CoverEntityFeature.SET_POSITION
     )
 
     def __init__(
         self,
         name: str,
         unique_id: str,
-        member_entities: list[BlindsCover],
+        group_num: str,
+        controller: NiceController,
         entry_id: str = None,
     ) -> None:
-        """Initialize the blind group."""
+        """Initialize the blind group using controller's native groups."""
         self._attr_name = name
         self._attr_unique_id = unique_id
-        self._member_entities = member_entities
-        self._attr_should_poll = True
+        self._group_num = group_num
+        self._controller = controller
+        self._attr_should_poll = False  # Groups don't have position feedback
         
         # Create device info for the group
         if entry_id:
             self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, f"{entry_id}_group_{name.lower().replace(' ', '_')}")},
+                identifiers={(DOMAIN, f"{entry_id}_group_{group_num}")},
                 name=f"{name} (Group)",
                 manufacturer="Nice S.p.A.",
-                model="Blind Group",
+                model="Controller Group",
                 via_device=(DOMAIN, entry_id),
             )
 
-    async def async_update(self) -> None:
-        """Update the group state from member entities."""
-        # Update all members first
-        for member in self._member_entities:
-            await member.async_update()
-
     @property
     def current_cover_position(self) -> int | None:
-        """Return average position of all members."""
-        positions = [
-            member.current_cover_position
-            for member in self._member_entities
-            if member.current_cover_position is not None
-        ]
-        if not positions:
-            return None
-        return int(sum(positions) / len(positions))
+        """Return position - groups don't track position."""
+        return None
 
     @property
     def is_opening(self) -> bool:
-        """Return if any member is opening."""
-        return any(member.is_opening for member in self._member_entities)
+        """Return if group is opening."""
+        return False
 
     @property
     def is_closing(self) -> bool:
-        """Return if any member is closing."""
-        return any(member.is_closing for member in self._member_entities)
+        """Return if group is closing."""
+        return False
 
     @property
-    def is_closed(self) -> bool:
-        """Return if all members are closed."""
-        return all(
-            member.is_closed
-            for member in self._member_entities
-            if member.current_cover_position is not None
-        )
+    def is_closed(self) -> bool | None:
+        """Return None - groups don't track state."""
+        return None
 
     async def async_open_cover(self, **kwargs: Any) -> None:
-        """Open all covers in the group sequentially for reliability."""
-        _LOGGER.info("Opening group: %s (%d members)", self.name, len(self._member_entities))
-        for member in self._member_entities:
-            try:
-                await member.async_open_cover(**kwargs)
-                await asyncio.sleep(0.15)  # Small delay between commands for controller reliability
-            except Exception as err:
-                _LOGGER.error("Error opening %s in group %s: %s", member.name, self.name, err)
+        """Open all covers in the group using controller's native group command."""
+        _LOGGER.info("Opening controller group: %s (num: %s)", self.name, self._group_num)
+        try:
+            await self._controller.send_group_command(self._group_num, "open")
+        except Exception as err:
+            _LOGGER.error("Error opening group %s: %s", self.name, err)
+            raise
 
     async def async_close_cover(self, **kwargs: Any) -> None:
-        """Close all covers in the group sequentially for reliability."""
-        _LOGGER.info("Closing group: %s (%d members)", self.name, len(self._member_entities))
-        for member in self._member_entities:
-            try:
-                await member.async_close_cover(**kwargs)
-                await asyncio.sleep(0.15)  # Small delay between commands for controller reliability
-            except Exception as err:
-                _LOGGER.error("Error closing %s in group %s: %s", member.name, self.name, err)
+        """Close all covers in the group using controller's native group command."""
+        _LOGGER.info("Closing controller group: %s (num: %s)", self.name, self._group_num)
+        try:
+            await self._controller.send_group_command(self._group_num, "close")
+        except Exception as err:
+            _LOGGER.error("Error closing group %s: %s", self.name, err)
+            raise
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
-        """Stop all covers in the group sequentially for reliability."""
-        _LOGGER.info("Stopping group: %s (%d members)", self.name, len(self._member_entities))
-        for member in self._member_entities:
-            try:
-                await member.async_stop_cover(**kwargs)
-                await asyncio.sleep(0.15)  # Small delay between commands for controller reliability
-            except Exception as err:
-                _LOGGER.error("Error stopping %s in group %s: %s", member.name, self.name, err)
-
-    async def async_set_cover_position(self, **kwargs: Any) -> None:
-        """Move all covers in the group to a specific position sequentially for reliability."""
-        _LOGGER.info("Setting group %s to position: %s (%d members)", self.name, kwargs.get("position"), len(self._member_entities))
-        for member in self._member_entities:
-            try:
-                await member.async_set_cover_position(**kwargs)
-                await asyncio.sleep(0.15)  # Small delay between commands for controller reliability
-            except Exception as err:
-                _LOGGER.error("Error setting position for %s in group %s: %s", member.name, self.name, err)
+        """Stop all covers in the group using controller's native group command."""
+        _LOGGER.info("Stopping controller group: %s (num: %s)", self.name, self._group_num)
+        try:
+            await self._controller.send_group_command(self._group_num, "stop")
+        except Exception as err:
+            _LOGGER.error("Error stopping group %s: %s", self.name, err)
+            raise

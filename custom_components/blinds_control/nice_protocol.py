@@ -310,6 +310,149 @@ class NiceController:
             _LOGGER.error("Unexpected error during device discovery: %s", err, exc_info=True)
             raise
 
+    async def discover_groups(self) -> list[dict[str, Any]]:
+        """Discover groups from Nice HTTP controller.
+
+        Returns:
+            List of group dicts with 'num', 'name', 'enabled'
+        """
+        _LOGGER.debug("Starting group discovery")
+
+        if not self._http_session:
+            _LOGGER.debug("Initializing HTTP session")
+            await self._ensure_initialized()
+
+        base_url = self.http_config.get("base_url", "")
+        url = f"{base_url.rstrip('/')}/cgi/grplst.xml"
+        
+        _LOGGER.debug("Group list XML URL: %s", url)
+
+        auth = None
+        username = self.http_config.get("username")
+        password = self.http_config.get("password")
+        if username and password:
+            auth = aiohttp.BasicAuth(username, password)
+
+        try:
+            _LOGGER.debug("Fetching group list from %s", url)
+            
+            async with self._http_session.get(url, auth=auth) as response:
+                _LOGGER.debug("HTTP response received (status: %d)", response.status)
+                response.raise_for_status()
+                xml_content = await response.text()
+                _LOGGER.debug("Received %d bytes of XML", len(xml_content))
+                
+                # Parse XML
+                try:
+                    root = ET.fromstring(xml_content)
+                except ET.ParseError as err:
+                    _LOGGER.error("Failed to parse group XML: %s", err)
+                    raise
+
+                groups = []
+
+                # Find all group elements
+                group_elements = root.findall('.//group')
+                _LOGGER.debug("Found %d group elements in XML", len(group_elements))
+
+                for idx, group_elem in enumerate(group_elements, 1):
+                    num = group_elem.get('num', '0')
+                    enabled = group_elem.get('enabled', '0')
+                    desc = group_elem.get('desc', f'Group {num}')
+                    
+                    _LOGGER.debug("Group %d: num=%s, desc=%s, enabled=%s", 
+                                idx, num, desc, enabled)
+                    
+                    # Only process enabled groups
+                    if enabled != '1':
+                        _LOGGER.debug("  → Skipping (not enabled)")
+                        continue
+                    
+                    group = {
+                        "num": num,
+                        "name": desc,
+                        "enabled": enabled,
+                    }
+                    groups.append(group)
+                    _LOGGER.info("  → Added group: %s (num: %s)", group["name"], group["num"])
+
+                _LOGGER.info("Group discovery complete: found %d enabled groups", len(groups))
+                return groups
+
+        except aiohttp.ClientError as err:
+            _LOGGER.error("HTTP error during group discovery: %s", err)
+            raise
+        except Exception as err:
+            _LOGGER.error("Unexpected error during group discovery: %s", err, exc_info=True)
+            raise
+
+    async def send_group_command(self, group_num: str, command: str) -> None:
+        """Send a command to a group via HTTP.
+
+        Args:
+            group_num: Group number (e.g., "1", "2")
+            command: Command to send (open, close, stop)
+        """
+        await self._ensure_initialized()
+
+        _LOGGER.info("Sending group command: %s to group: %s", command, group_num)
+
+        if not self._http_session:
+            _LOGGER.error("HTTP session not initialized")
+            return
+
+        try:
+            # Map commands to Nice protocol data codes
+            cmd_data = {
+                "stop": "02000000",
+                "open": "03000000",
+                "close": "04000000",
+            }
+
+            dat = cmd_data.get(command)
+            if not dat:
+                _LOGGER.error("Unknown command: %s", command)
+                return
+
+            # Build URL: /cgi/grpcmd.xml?req=R&num=1&dat=03000000
+            base_url = self.http_config.get("base_url", "")
+            url = f"{base_url.rstrip('/')}/cgi/grpcmd.xml?req=R&num={group_num}&dat={dat}"
+
+            # Prepare authentication
+            auth = None
+            username = self.http_config.get("username")
+            password = self.http_config.get("password")
+            if username and password:
+                auth = aiohttp.BasicAuth(username, password)
+
+            _LOGGER.debug("Sending HTTP group request to: %s", url)
+            async with self._http_session.get(url, auth=auth) as response:
+                response.raise_for_status()
+                xml_content = await response.text()
+                
+                # Parse response to check result
+                try:
+                    root = ET.fromstring(xml_content)
+                    result = root.findtext('.//result', '0')
+                    if result == '0':
+                        _LOGGER.info(
+                            "Group command '%s' sent successfully to group %s",
+                            command, group_num
+                        )
+                    else:
+                        _LOGGER.warning(
+                            "Group command returned result: %s", result
+                        )
+                except ET.ParseError:
+                    _LOGGER.warning("Could not parse group command response")
+
+        except aiohttp.ClientError as err:
+            _LOGGER.error("HTTP request failed for group command '%s': %s", command, err)
+            raise
+        except Exception as err:
+            _LOGGER.error("Unexpected error sending group command '%s': %s", command, err)
+            raise
+
     async def cleanup(self) -> None:
         """Clean up resources."""
         if self._http_session:
