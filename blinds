@@ -476,13 +476,13 @@ if __name__ == "__main__":
                             print(f"╔{'═'*WIDTH}╗")
                             print(f"║{'CONTROLLER GROUPS':^{WIDTH}}║")
                             print(f"╠{'═'*WIDTH}╣")
-                            print(f"║ {'Group Name':<30} {'Group #':<28} ║")
+                            print(f"║ {'Group Name':<30} {'Group #':<30} ║")
                             print(f"╠{'═'*WIDTH}╣")
                             
                             for group_info in groups.values():
                                 group_name = group_info['name']
                                 group_num = f"#{group_info['num']}"
-                                print(f"║ {group_name:<30} {group_num:<28} ║")
+                                print(f"║ {group_name:<30} {group_num:<30} ║")
                             
                             print(f"╠{'═'*WIDTH}╣")
                             usage_text = 'Use: ./blinds <cmd>-group "<name>"'

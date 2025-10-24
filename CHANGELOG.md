@@ -5,6 +5,13 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2025-10-24
+
+### Fixed
+- CLI status table borders now properly align on the right side
+- Fixed controller groups table column width calculations
+- Corrected summary line formatting for consistent table borders
+
 ## [1.8.0] - 2025-10-10
 
 ### Added
