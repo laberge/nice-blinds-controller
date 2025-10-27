@@ -139,6 +139,11 @@ class BlindsCover(CoverEntity):
             _LOGGER.error("Error updating blind %s status: %s", self.name, err)
 
     @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return True
+
+    @property
     def current_cover_position(self) -> int | None:
         """Return current position of cover (0 closed, 100 open)."""
         return self._position
@@ -154,8 +159,10 @@ class BlindsCover(CoverEntity):
         return self._is_closing
 
     @property
-    def is_closed(self) -> bool:
+    def is_closed(self) -> bool | None:
         """Return if the cover is closed."""
+        if self._position is None:
+            return None
         return self._position == 0
 
     async def async_open_cover(self, **kwargs: Any) -> None:
@@ -286,6 +293,11 @@ class BlindsGroupCover(CoverEntity):
                 model="Controller Group",
                 via_device=(DOMAIN, entry_id),
             )
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return True
 
     @property
     def current_cover_position(self) -> int | None:

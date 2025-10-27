@@ -5,6 +5,15 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2025-10-27
+
+### Fixed
+- **Home Assistant Integration**: Fixed disabled buttons in cover entity UI
+  - Added explicit `available` property to ensure entities are always available
+  - Fixed `is_closed` property to return `None` when position is unknown instead of False
+  - Entities now properly enable open/close/stop buttons even before initial position update
+- Updated manifest version to 1.8.2
+
 ## [1.8.1] - 2025-10-24
 
 ### Fixed
