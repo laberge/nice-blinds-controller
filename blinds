@@ -6,19 +6,11 @@ import aiohttp
 import sys
 import os
 import xml.etree.ElementTree as ET
-import yaml
 
 # Configuration - Update these with your settings or use environment variables
 CONTROLLER_URL = os.getenv("BLINDS_URL", "http://192.168.10.235")
 USERNAME = os.getenv("BLINDS_USER", "aaron")
 PASSWORD = os.getenv("BLINDS_PASS", "")  # Set BLINDS_PASS env var or edit here
-
-# Group command mode: "sequential" for maximum reliability, "concurrent" for speed
-GROUP_MODE = os.getenv("BLINDS_GROUP_MODE", "concurrent")
-
-# Path to groups configuration file
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-GROUPS_FILE = os.path.join(SCRIPT_DIR, "blinds_groups.yaml")
 
 
 async def get_devices(base_url: str, username: str, password: str):

@@ -29,30 +29,6 @@
           "move_time": "Time it takes for blinds to fully open/close"
         }
       },
-      "configure_groups": {
-        "title": "Configure Groups",
-        "description": "Create groups to control multiple blinds together",
-        "data": {
-          "create_groups": "Create Groups"
-        },
-        "data_description": {
-          "create_groups": "Do you want to create groups? (e.g., 'Office Blinds', 'Sunroom Blinds')"
-        }
-      },
-      "create_group": {
-        "title": "Create Group",
-        "description": "Define a group of blinds to control together",
-        "data": {
-          "group_name": "Group Name",
-          "group_devices": "Devices in Group",
-          "add_another": "Add Another Group"
-        },
-        "data_description": {
-          "group_name": "Name for this group (e.g., 'Office Blinds')",
-          "group_devices": "Select devices to include in this group",
-          "add_another": "Create another group after this one"
-        }
-      },
       "review_groups": {
         "title": "Review Controller Groups",
         "description": "Found {group_count} groups configured on your Nice controller:\n\n{groups}\n\nThese groups will appear as separate cover entities in Home Assistant. Commands sent to groups execute simultaneously on all member devices at the hardware level.",
@@ -96,47 +72,6 @@
         },
         "data_description": {
           "confirm_refresh": "Click to refresh devices and groups from the controller"
-        }
-      },
-      "manage_groups": {
-        "title": "Manage Groups",
-        "description": "Current groups:\n{groups}",
-        "data": {
-          "action": "Action"
-        }
-      },
-      "add_group": {
-        "title": "Add New Group",
-        "description": "Create a new group of blinds",
-        "data": {
-          "group_name": "Group Name",
-          "group_devices": "Devices"
-        },
-        "data_description": {
-          "group_name": "Name for the new group",
-          "group_devices": "Select devices for this group"
-        }
-      },
-      "select_group_to_edit": {
-        "title": "Select Group to Edit",
-        "description": "Choose which group to edit",
-        "data": {
-          "group_index": "Group"
-        }
-      },
-      "edit_group": {
-        "title": "Edit Group",
-        "description": "Modify group settings",
-        "data": {
-          "group_name": "Group Name",
-          "group_devices": "Devices"
-        }
-      },
-      "select_group_to_delete": {
-        "title": "Delete Group",
-        "description": "Choose which group to delete",
-        "data": {
-          "group_index": "Group"
         }
       }
     }

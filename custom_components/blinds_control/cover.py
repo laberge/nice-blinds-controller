@@ -2,18 +2,24 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 import logging
 from typing import Any
 
 from homeassistant.components.cover import (
+    CoverDeviceClass,
     CoverEntity,
     CoverEntityFeature,
-    CoverDeviceClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from . import DOMAIN
 from .nice_protocol import NiceController
@@ -27,9 +33,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Blinds Control cover platform."""
+    entry_runtime = hass.data[DOMAIN][config_entry.entry_id]
     move_time = config_entry.data.get("move_time", 30)
 
-    # Build HTTP config
     http_config = {
         "base_url": config_entry.data.get("http_base_url"),
         "username": config_entry.data.get("http_username"),
@@ -37,26 +43,29 @@ async def async_setup_entry(
         "timeout": config_entry.data.get("http_timeout", 10),
     }
 
-    # Initialize Nice HTTP controller
     controller = NiceController(http_config=http_config)
+    coordinator = NiceStatusCoordinator(hass, controller)
+    await coordinator.async_config_entry_first_refresh()
+
+    entry_runtime["controller"] = controller
+    entry_runtime["coordinator"] = coordinator
 
     # Create cover entities for all devices
     entities = []
     devices = config_entry.data.get("devices", [])
-    device_entities = {}  # Store entities by device ID for group references
 
     for device in devices:
         entity = BlindsCover(
             name=device["name"],
             unique_id=f"{config_entry.entry_id}_{device['id']}",
             controller=controller,
+            coordinator=coordinator,
             device_id=device["id"],
             move_time=move_time,
             entry_id=config_entry.entry_id,
             device_info=device,
         )
         entities.append(entity)
-        device_entities[device["id"]] = entity
 
     # Create group entities if configured (controller native groups)
     groups = config_entry.data.get("groups", [])
@@ -70,6 +79,7 @@ async def async_setup_entry(
                 unique_id=f"{config_entry.entry_id}_group_{group_num}",
                 group_num=group_num,
                 controller=controller,
+                coordinator=coordinator,
                 entry_id=config_entry.entry_id,
             )
             entities.append(group_entity)
@@ -77,7 +87,28 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
 
-class BlindsCover(CoverEntity):
+class NiceStatusCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
+    """Coordinator for polling Nice controller device states."""
+
+    def __init__(self, hass: HomeAssistant, controller: NiceController) -> None:
+        """Initialize the coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name="Nice Blinds Controller status",
+            update_interval=timedelta(seconds=10),
+        )
+        self._controller = controller
+
+    async def _async_update_data(self) -> dict[str, dict[str, Any]]:
+        """Fetch latest device data from controller."""
+        try:
+            return await self._controller.get_all_device_status()
+        except Exception as err:
+            raise UpdateFailed(f"Failed to refresh device status: {err}") from err
+
+
+class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
     """Representation of a Blinds Control cover."""
 
     _attr_device_class = CoverDeviceClass.BLIND
@@ -93,22 +124,21 @@ class BlindsCover(CoverEntity):
         name: str,
         unique_id: str,
         controller: NiceController,
+        coordinator: NiceStatusCoordinator,
         device_id: str,
         move_time: int = 30,
         entry_id: str = None,
         device_info: dict = None,
     ) -> None:
         """Initialize the blind."""
+        super().__init__(coordinator)
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._controller = controller
         self._device_id = device_id
-        self._position = None  # Will be fetched from controller
-        self._is_opening = False
-        self._is_closing = False
-        self._move_time = move_time  # Estimated time to fully open/close in seconds
-        self._attr_should_poll = True  # Enable polling to get real position
-        
+        self._move_time = move_time
+        self._attr_should_poll = False
+
         # Create device info
         if device_info:
             self._attr_device_info = DeviceInfo(
@@ -119,24 +149,13 @@ class BlindsCover(CoverEntity):
                 sw_version=device_info.get("adr", "1"),
                 via_device=(DOMAIN, entry_id),
             )
-        
-    async def async_update(self) -> None:
-        """Fetch new state data for this cover."""
-        try:
-            # Get current status from controller
-            status = await self._controller.get_device_status(self._device_id)
-            if status:
-                # Update position from controller
-                pos = status.get('pos', '255')
-                if pos != '255':  # 255 means unknown position
-                    self._position = int(pos)
-                
-                # Update moving state
-                sta = status.get('sta', '00')
-                self._is_opening = (sta == '02')
-                self._is_closing = (sta == '03')
-        except Exception as err:
-            _LOGGER.error("Error updating blind %s status: %s", self.name, err)
+
+    @property
+    def _status(self) -> dict[str, Any] | None:
+        """Return cached status for this device."""
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.get(self._device_id)
 
     @property
     def available(self) -> bool:
@@ -146,56 +165,56 @@ class BlindsCover(CoverEntity):
     @property
     def current_cover_position(self) -> int | None:
         """Return current position of cover (0 closed, 100 open)."""
-        return self._position
+        if not (status := self._status):
+            return None
+        position = status.get("position")
+        return position if position is not None else None
 
     @property
     def is_opening(self) -> bool:
         """Return if the cover is opening."""
-        return self._is_opening
+        status = self._status
+        if not status:
+            return False
+        return status.get("status_code") == "02"
 
     @property
     def is_closing(self) -> bool:
         """Return if the cover is closing."""
-        return self._is_closing
+        status = self._status
+        if not status:
+            return False
+        return status.get("status_code") == "03"
 
     @property
     def is_closed(self) -> bool | None:
         """Return if the cover is closed."""
-        if self._position is None:
+        position = self.current_cover_position
+        if position is None:
             return None
-        return self._position == 0
+        return position == 0
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
         _LOGGER.info("Opening blinds: %s", self.name)
-        self._is_opening = True
-        self._is_closing = False
-        self.async_write_ha_state()
 
         try:
             # Send Nice protocol open command
             await self._controller.send_command(self._device_id, "open")
-            # Position will be updated by polling in async_update
+            await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Error opening blinds %s: %s", self.name, err)
-            self._is_opening = False
-            self.async_write_ha_state()
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the cover."""
         _LOGGER.info("Closing blinds: %s", self.name)
-        self._is_closing = True
-        self._is_opening = False
-        self.async_write_ha_state()
 
         try:
             # Send Nice protocol close command
             await self._controller.send_command(self._device_id, "close")
-            # Position will be updated by polling in async_update
+            await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Error closing blinds %s: %s", self.name, err)
-            self._is_closing = False
-            self.async_write_ha_state()
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop the cover."""
@@ -207,25 +226,14 @@ class BlindsCover(CoverEntity):
         except Exception as err:
             _LOGGER.error("Error stopping blinds %s: %s", self.name, err)
         finally:
-            self._is_opening = False
-            self._is_closing = False
-            self.async_write_ha_state()
+            await self.coordinator.async_request_refresh()
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Move the cover to a specific position."""
         position = kwargs.get("position", 0)
         _LOGGER.info("Setting blinds %s to position: %s", self.name, position)
 
-        current_pos = self._position if self._position is not None else 0
-        
-        if position > current_pos:
-            self._is_opening = True
-            self._is_closing = False
-        else:
-            self._is_closing = True
-            self._is_opening = False
-
-        self.async_write_ha_state()
+        current_pos = self.current_cover_position or 0
 
         try:
             # Calculate movement time based on position difference
@@ -242,24 +250,15 @@ class BlindsCover(CoverEntity):
 
             # Stop at desired position
             await self._controller.send_command(self._device_id, "stop")
-            
-            # Position will be updated by polling in async_update
         except Exception as err:
             _LOGGER.error("Error setting blinds %s position: %s", self.name, err)
         finally:
-            self._is_opening = False
-            self._is_closing = False
-            self.async_write_ha_state()
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Handle entity removal and clean up controller resources."""
-        try:
-            await self._controller.cleanup()
-        except Exception as err:
-            _LOGGER.error("Error during controller cleanup for %s: %s", self.name, err)
+            await self.coordinator.async_request_refresh()
 
 
-class BlindsGroupCover(CoverEntity):
+class BlindsGroupCover(
+    CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity
+):
     """Representation of a Nice controller group."""
 
     _attr_device_class = CoverDeviceClass.BLIND
@@ -275,15 +274,17 @@ class BlindsGroupCover(CoverEntity):
         unique_id: str,
         group_num: str,
         controller: NiceController,
+        coordinator: NiceStatusCoordinator,
         entry_id: str = None,
     ) -> None:
         """Initialize the blind group using controller's native groups."""
+        super().__init__(coordinator)
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._group_num = group_num
         self._controller = controller
         self._attr_should_poll = False  # Groups don't have position feedback
-        
+
         # Create device info for the group
         if entry_id:
             self._attr_device_info = DeviceInfo(
@@ -324,6 +325,7 @@ class BlindsGroupCover(CoverEntity):
         _LOGGER.info("Opening controller group: %s (num: %s)", self.name, self._group_num)
         try:
             await self._controller.send_group_command(self._group_num, "open")
+            await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Error opening group %s: %s", self.name, err)
             raise
@@ -333,6 +335,7 @@ class BlindsGroupCover(CoverEntity):
         _LOGGER.info("Closing controller group: %s (num: %s)", self.name, self._group_num)
         try:
             await self._controller.send_group_command(self._group_num, "close")
+            await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Error closing group %s: %s", self.name, err)
             raise
@@ -342,6 +345,7 @@ class BlindsGroupCover(CoverEntity):
         _LOGGER.info("Stopping controller group: %s (num: %s)", self.name, self._group_num)
         try:
             await self._controller.send_group_command(self._group_num, "stop")
+            await self.coordinator.async_request_refresh()
         except Exception as err:
             _LOGGER.error("Error stopping group %s: %s", self.name, err)
             raise

@@ -10,7 +10,7 @@ A Home Assistant custom integration for controlling blinds and motors via HTTP/n
 - **Automatic Device Discovery**: Finds all devices from your Nice controller
 - **Full Control**: Open, close, stop, and position control (0-100%)
 - **Real-time Position Tracking**: Reads actual positions from the controller
-- **Group Support**: Create groups during setup to control multiple blinds together
+- **Controller Group Support**: Automatically imports enabled groups from your Nice controller for true hardware-level synchronization
 - **UI Configuration**: Easy setup through Home Assistant interface
 - **CLI Tools**: Standalone command-line interface for direct control (see [CLI Tools](#cli-tools-standalone) below)
 
@@ -64,7 +64,7 @@ A Home Assistant custom integration for controlling blinds and motors via HTTP/n
    - Groups execute commands at the hardware level (truly simultaneous)
 9. Click **Submit** to complete setup
 
-**Group entities** appear as separate cover entities that send commands to your controller's native groups for instant, simultaneous control of all member devices.
+**Group entities** appear as separate cover entities. They send commands to your controller's native groups for instant, simultaneous control of all member devices. Create and edit groups in the controller web UI; then use the integration's **Options → Refresh Devices & Groups** flow to pull the latest list into Home Assistant.
 
 ### Refreshing Devices & Groups
 
@@ -239,7 +239,7 @@ For issues and feature requests, please visit the [GitHub Issues](https://github
 
 ## License
 
-This project is open source. Feel free to modify and distribute as needed.
+Released under the MIT License. See the `LICENSE` file for details.
 
 ## CLI Tools (Standalone)
 
@@ -283,7 +283,7 @@ blinds stop-group "Kitchen"  # Stops all kitchen blinds
 
 Groups are configured directly in your **Nice controller's web interface**:
 
-1. Open your controller's web UI: `http://192.168.10.235/grp_list.htm`
+1. Open your controller's web UI: `http://[contoller-ip]/grp_list.htm`
 2. Create and manage groups
 3. Groups are instantly available to the CLI (no configuration files needed!)
 

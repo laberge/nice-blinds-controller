@@ -5,6 +5,21 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2025-11-10
+
+### Added
+- Periodic device polling powered by a shared `DataUpdateCoordinator` so entities stay in sync without per-entity sessions.
+- Repository-level `LICENSE` (MIT) and `CODEOWNERS` to satisfy HACS Default requirements.
+
+### Changed
+- Covers now reuse a single Nice controller instance stored in integration runtime data.
+- Pinned `aiohttp==3.9.5` to ensure reproducible installs.
+- README now clarifies controller group behavior and how to refresh them from integration options.
+
+### Fixed
+- Eliminated redundant HTTP sessions and manual polling logic in each entity.
+- Removed unused group configuration flow/residual CLI dependencies.
+
 ## [1.8.2] - 2025-10-27
 
 ### Fixed
