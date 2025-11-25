@@ -168,10 +168,34 @@ async def send_command(base_url: str, username: str, password: str, device_id: s
 async def send_group_command(group_name: str, command: str, config_url: str, config_user: str, config_pass: str):
     """Send a command to a controller group using native group commands."""
     # Get groups from controller
-    groups = await get_controller_groups(config_url, config_user, config_pass)
-    
+    try:
+        groups = await get_controller_groups(config_url, config_user, config_pass)
+    except aiohttp.ClientConnectorError as e:
+        print(f"✗ Error: Cannot connect to controller at {config_url}")
+        print(f"  Connection failed: {e.strerror if hasattr(e, 'strerror') else str(e)}")
+        print(f"\n  Please check:")
+        print(f"    - Controller is powered on and accessible")
+        print(f"    - Network connection is working")
+        print(f"    - Controller URL is correct: {config_url}")
+        return False
+    except asyncio.TimeoutError:
+        print(f"✗ Error: Connection to controller timed out")
+        print(f"  Controller at {config_url} did not respond within 10 seconds")
+        return False
+    except aiohttp.ClientResponseError as e:
+        if e.status == 401:
+            print(f"✗ Error: Authentication failed")
+            print(f"  Check username and password are correct")
+        else:
+            print(f"✗ Error: HTTP {e.status} - {e.message}")
+        return False
+    except Exception as e:
+        print(f"✗ Error: Failed to retrieve groups from controller")
+        print(f"  {type(e).__name__}: {e}")
+        return False
+
     group_name_normalized = group_name.lower().strip()
-    
+
     if group_name_normalized not in groups:
         print(f"✗ Error: Group '{group_name}' not found on controller")
         print(f"\nAvailable groups:")
@@ -240,7 +264,7 @@ async def main_async(command: str, device_name: str, config_url: str, config_use
     try:
         # Get all devices
         devices = await get_devices(config_url, config_user, config_pass)
-        
+
         # Find device by name (case-insensitive, strip whitespace)
         device_name_normalized = device_name.lower().strip()
         if device_name_normalized not in devices:
@@ -249,18 +273,37 @@ async def main_async(command: str, device_name: str, config_url: str, config_use
             for name in sorted(devices.keys()):
                 print(f"  - {name.title()}")
             return False
-        
+
         device_id = devices[device_name_normalized]
-        
+
         # Send command
         await send_command(config_url, config_user, config_pass, device_id, command)
-        
+
         # Success message
         print(f"✓ {command.upper()}: {device_name.title()}")
         return True
-        
+
+    except aiohttp.ClientConnectorError as e:
+        print(f"✗ Error: Cannot connect to controller at {config_url}")
+        print(f"  Connection failed: {e.strerror if hasattr(e, 'strerror') else str(e)}")
+        print(f"\n  Please check:")
+        print(f"    - Controller is powered on and accessible")
+        print(f"    - Network connection is working")
+        print(f"    - Controller URL is correct: {config_url}")
+        return False
+    except asyncio.TimeoutError:
+        print(f"✗ Error: Connection to controller timed out")
+        print(f"  Controller at {config_url} did not respond within 10 seconds")
+        return False
+    except aiohttp.ClientResponseError as e:
+        if e.status == 401:
+            print(f"✗ Error: Authentication failed")
+            print(f"  Check username and password are correct")
+        else:
+            print(f"✗ Error: HTTP {e.status} - {e.message}")
+        return False
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f"✗ Error: {type(e).__name__}: {e}")
         return False
 
 
@@ -335,42 +378,74 @@ async def list_devices_async(config_url: str, config_user: str, config_pass: str
     """List all devices."""
     try:
         devices = await get_devices(config_url, config_user, config_pass)
-        
+
         print(f"\n{'='*60}")
         print(f"Available Devices ({len(devices)} total)")
         print(f"{'='*60}\n")
-        
+
         for name in sorted(devices.keys()):
             device_id = devices[name]
             print(f"  {name.title():20} (ID: {device_id})")
-        
+
         print(f"\n{'='*60}\n")
-        
+
+    except aiohttp.ClientConnectorError as e:
+        print(f"✗ Error: Cannot connect to controller at {config_url}")
+        print(f"  Connection failed: {e.strerror if hasattr(e, 'strerror') else str(e)}")
+        print(f"\n  Please check:")
+        print(f"    - Controller is powered on and accessible")
+        print(f"    - Network connection is working")
+        print(f"    - Controller URL is correct: {config_url}")
+    except asyncio.TimeoutError:
+        print(f"✗ Error: Connection to controller timed out")
+        print(f"  Controller at {config_url} did not respond within 10 seconds")
+    except aiohttp.ClientResponseError as e:
+        if e.status == 401:
+            print(f"✗ Error: Authentication failed")
+            print(f"  Check username and password are correct")
+        else:
+            print(f"✗ Error: HTTP {e.status} - {e.message}")
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f"✗ Error: {type(e).__name__}: {e}")
 
 
 async def list_groups_async(config_url: str, config_user: str, config_pass: str):
     """List all controller groups."""
     try:
         groups = await get_controller_groups(config_url, config_user, config_pass)
-        
+
         print(f"\n{'='*60}")
         print(f"Controller Groups ({len(groups)} total)")
         print(f"{'='*60}\n")
-        
+
         for group_info in sorted(groups.values(), key=lambda g: int(g['num'])):
             print(f"  {group_info['name']:30} (Group #{group_info['num']})")
-        
+
         print(f"\n{'='*60}")
         print(f"Use: ./blinds <open|close|stop>-group \"<group name>\"")
         print(f"\nNote: Groups execute actions programmed in your controller.")
         print(f"      To verify/edit which devices are in each group:")
         print(f"      http://192.168.10.235/grp_list.htm")
         print(f"{'='*60}\n")
-        
+
+    except aiohttp.ClientConnectorError as e:
+        print(f"✗ Error: Cannot connect to controller at {config_url}")
+        print(f"  Connection failed: {e.strerror if hasattr(e, 'strerror') else str(e)}")
+        print(f"\n  Please check:")
+        print(f"    - Controller is powered on and accessible")
+        print(f"    - Network connection is working")
+        print(f"    - Controller URL is correct: {config_url}")
+    except asyncio.TimeoutError:
+        print(f"✗ Error: Connection to controller timed out")
+        print(f"  Controller at {config_url} did not respond within 10 seconds")
+    except aiohttp.ClientResponseError as e:
+        if e.status == 401:
+            print(f"✗ Error: Authentication failed")
+            print(f"  Check username and password are correct")
+        else:
+            print(f"✗ Error: HTTP {e.status} - {e.message}")
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f"✗ Error: {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":
@@ -482,9 +557,25 @@ if __name__ == "__main__":
                             print(f"╚{'═'*WIDTH}╝\n")
                     except Exception:
                         pass  # Groups are optional, don't error if unavailable
-                
+
+            except aiohttp.ClientConnectorError as e:
+                print(f"✗ Error: Cannot connect to controller at {CONTROLLER_URL}")
+                print(f"  Connection failed: {e.strerror if hasattr(e, 'strerror') else str(e)}")
+                print(f"\n  Please check:")
+                print(f"    - Controller is powered on and accessible")
+                print(f"    - Network connection is working")
+                print(f"    - Controller URL is correct: {CONTROLLER_URL}")
+            except asyncio.TimeoutError:
+                print(f"✗ Error: Connection to controller timed out")
+                print(f"  Controller at {CONTROLLER_URL} did not respond within 10 seconds")
+            except aiohttp.ClientResponseError as e:
+                if e.status == 401:
+                    print(f"✗ Error: Authentication failed")
+                    print(f"  Check username and password are correct")
+                else:
+                    print(f"✗ Error: HTTP {e.status} - {e.message}")
             except Exception as e:
-                print(f"✗ Error: {e}")
+                print(f"✗ Error: {type(e).__name__}: {e}")
         
         asyncio.run(show_status())
         sys.exit(0)

@@ -5,6 +5,15 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2025-11-25
+
+### Fixed
+- **CLI Tools**: Enhanced error handling with specific exception types
+  - Added detailed connection error messages for `ClientConnectorError`
+  - Explicit timeout error handling with helpful diagnostics
+  - Improved authentication failure detection (401 errors)
+  - Better error messages guide users to check controller connectivity and credentials
+
 ## [1.9.0] - 2025-11-10
 
 ### Added
