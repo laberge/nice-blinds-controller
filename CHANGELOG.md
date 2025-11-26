@@ -5,6 +5,14 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2025-11-25
+
+### Fixed
+- **Integration**: Removed version pin from `aiohttp` requirement
+  - Home Assistant includes `aiohttp` as a core dependency
+  - Version pinning caused installation conflicts in HACS
+  - Now uses Home Assistant's built-in `aiohttp` version
+
 ## [1.9.1] - 2025-11-25
 
 ### Fixed
