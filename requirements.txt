@@ -1,0 +1,5 @@
+# Development requirements for standalone scripts
+# Note: The Home Assistant integration does not require these dependencies
+# as aiohttp is a core Home Assistant dependency
+aiohttp>=3.8.0
+beautifulsoup4>=4.11.0
