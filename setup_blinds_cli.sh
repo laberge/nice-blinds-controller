@@ -9,6 +9,11 @@ echo ""
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${(%):-%x}" )" && pwd )"
 
+# Install Python dependencies
+echo "Installing Python dependencies..."
+pip3 install -r "$SCRIPT_DIR/requirements.txt" -q
+echo ""
+
 # Prompt for password
 echo "Enter your Nice controller password (or press Enter to skip):"
 read -s PASSWORD
