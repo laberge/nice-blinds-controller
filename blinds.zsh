@@ -31,4 +31,3 @@ alias b="${BLINDS_SCRIPT_DIR}/blinds"
 # Optional: Specific blind shortcuts
 # alias mba3='blinds'  # Usage: mba3 open "MBA 3"
 # alias kitchen='blinds'  # Usage: kitchen open "Kitchen 1"
-

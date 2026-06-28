@@ -9,8 +9,6 @@ import xml.etree.ElementTree as ET
 
 _LOGGER = logging.getLogger(__name__)
 
-_LOGGER.debug("Nice protocol module loaded")
-
 
 class NiceController:
     """HTTP controller for Nice blind motors."""
@@ -26,23 +24,31 @@ class NiceController:
         self._http_session = None
 
         _LOGGER.debug("NiceController initialized (base_url: %s)", http_config.get("base_url"))
-        _LOGGER.debug("NiceController initialized (base_url: %s)", http_config.get("base_url"))
 
     async def _initialize_http(self) -> None:
         """Initialize HTTP session for API communication."""
-        try:
-            timeout = aiohttp.ClientTimeout(total=self.http_config.get("timeout", 10))
-            self._http_session = aiohttp.ClientSession(timeout=timeout)
-            self._initialized = True
-            _LOGGER.debug("HTTP session initialized (timeout: %ds)", self.http_config.get("timeout", 10))
-        except Exception as err:
-            _LOGGER.error("Failed to initialize HTTP session: %s", err)
-            raise
+        timeout = aiohttp.ClientTimeout(total=self.http_config.get("timeout", 10))
+        self._http_session = aiohttp.ClientSession(timeout=timeout)
+        self._initialized = True
+        _LOGGER.debug("HTTP session initialized (timeout: %ds)", self.http_config.get("timeout", 10))
 
     async def _ensure_initialized(self) -> None:
         """Ensure the controller is initialized."""
         if not self._initialized:
             await self._initialize_http()
+
+    def _auth(self) -> aiohttp.BasicAuth | None:
+        """Build basic auth from config, or None if no credentials."""
+        username = self.http_config.get("username")
+        password = self.http_config.get("password")
+        if username and password:
+            return aiohttp.BasicAuth(username, password)
+        return None
+
+    def _url(self, path: str) -> str:
+        """Build a full controller URL from a path/query."""
+        base_url = self.http_config.get("base_url", "")
+        return f"{base_url.rstrip('/')}/{path}"
 
     async def send_command(self, device_id: str, command: str) -> None:
         """Send a command to the Nice motor via HTTP.
@@ -86,18 +92,10 @@ class NiceController:
                 return
 
             # Build URL: /cgi/devcmd.xml?adr=1&ept=0F&cmd=03
-            base_url = self.http_config.get("base_url", "")
-            url = f"{base_url.rstrip('/')}/cgi/devcmd.xml?adr={adr}&ept={ept}&cmd={cmd}"
-
-            # Prepare authentication
-            auth = None
-            username = self.http_config.get("username")
-            password = self.http_config.get("password")
-            if username and password:
-                auth = aiohttp.BasicAuth(username, password)
+            url = self._url(f"cgi/devcmd.xml?adr={adr}&ept={ept}&cmd={cmd}")
 
             _LOGGER.debug("Sending HTTP request to: %s", url)
-            async with self._http_session.get(url, auth=auth) as response:
+            async with self._http_session.get(url, auth=self._auth()) as response:
                 response.raise_for_status()
                 _LOGGER.info(
                     "HTTP command '%s' sent successfully to device %s (status: %s)",
@@ -113,17 +111,17 @@ class NiceController:
 
     async def test_connection(self) -> bool:
         """Test if the controller is reachable.
-        
+
         Returns:
             True if connection successful, False otherwise
         """
         await self._ensure_initialized()
-        
+
         base_url = self.http_config.get("base_url", "")
         _LOGGER.debug("Testing connection to: %s", base_url)
-        
+
         try:
-            async with self._http_session.get(base_url) as response:
+            async with self._http_session.get(base_url, auth=self._auth()) as response:
                 _LOGGER.debug("Connection test response: %d", response.status)
                 return response.status < 500
         except Exception as err:
@@ -132,10 +130,10 @@ class NiceController:
 
     async def get_device_status(self, device_id: str) -> dict[str, str] | None:
         """Get current status of a specific device.
-        
+
         Args:
             device_id: Device identifier in format "adr,ept" (e.g., "1,0E")
-            
+
         Returns:
             Dict with device status info or None if not found
         """
@@ -150,17 +148,10 @@ class NiceController:
             _LOGGER.error("HTTP session not initialized")
             return {}
 
-        base_url = self.http_config.get("base_url", "")
-        url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
-
-        auth = None
-        username = self.http_config.get("username")
-        password = self.http_config.get("password")
-        if username and password:
-            auth = aiohttp.BasicAuth(username, password)
+        url = self._url("cgi/devlst.xml")
 
         try:
-            async with self._http_session.get(url, auth=auth) as response:
+            async with self._http_session.get(url, auth=self._auth()) as response:
                 response.raise_for_status()
                 xml_content = await response.text()
 
@@ -216,30 +207,18 @@ class NiceController:
             _LOGGER.debug("Initializing HTTP session")
             await self._ensure_initialized()
 
-        base_url = self.http_config.get("base_url", "")
         # Use XML endpoint instead of HTML page - devices are loaded via AJAX
-        url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
-        
-        _LOGGER.debug("Base URL: %s", base_url)
+        url = self._url("cgi/devlst.xml")
         _LOGGER.debug("Device list XML URL: %s", url)
 
-        auth = None
-        username = self.http_config.get("username")
-        password = self.http_config.get("password")
-        if username and password:
-            auth = aiohttp.BasicAuth(username, password)
-            _LOGGER.debug("Using basic auth (username: %s)", username)
-        else:
+        auth = self._auth()
+        if auth is None:
             _LOGGER.warning("No authentication configured")
 
         try:
-            _LOGGER.debug("Fetching device list from %s", url)
-            _LOGGER.debug("Using authentication: %s", "Yes" if auth else "No")
-            
             async with self._http_session.get(url, auth=auth) as response:
                 _LOGGER.debug("HTTP response received (status: %d)", response.status)
-                _LOGGER.debug("Response headers: %s", dict(response.headers))
-                
+
                 # Check for authentication/redirect issues before processing
                 if response.status == 401:
                     _LOGGER.error("Authentication failed (401 Unauthorized)")
@@ -249,15 +228,11 @@ class NiceController:
                         status=401,
                         message="Authentication required"
                     )
-                
+
                 response.raise_for_status()
                 xml_content = await response.text()
                 _LOGGER.debug("Received %d bytes of XML", len(xml_content))
-                _LOGGER.debug("XML preview: %s", xml_content[:500])
-                
-                # Log full XML for debugging
-                _LOGGER.debug("Full XML content:\n%s", xml_content)
-                
+
                 # Check if we got a login/error page instead of XML
                 xml_lower = xml_content.lower()
                 if any(keyword in xml_lower for keyword in ['<!doctype html', '<html', 'login', 'password']):
@@ -290,19 +265,19 @@ class NiceController:
                     adr = device_elem.get('adr', '0')
                     ept = device_elem.get('ept', '0')
                     desc = device_elem.get('desc', product_name)
-                    
-                    _LOGGER.debug("Device %d: mac=%s, name=%s, adr=%s, ept=%s, installed=%s", 
+
+                    _LOGGER.debug("Device %d: mac=%s, name=%s, adr=%s, ept=%s, installed=%s",
                                 idx, mac, desc, adr, ept, installed)
-                    
+
                     # Only process installed devices
                     if installed != '1':
                         _LOGGER.debug("  → Skipping (not installed)")
                         continue
-                    
+
                     # Convert hex to decimal for display in module name
                     adr_dec = int(adr, 16)
                     ept_dec = int(ept, 16)
-                    
+
                     device = {
                         "id": f"{adr_dec},{ept}",  # Use decimal adr, hex ept
                         "name": desc if desc else product_name,
@@ -335,26 +310,16 @@ class NiceController:
             _LOGGER.debug("Initializing HTTP session")
             await self._ensure_initialized()
 
-        base_url = self.http_config.get("base_url", "")
-        url = f"{base_url.rstrip('/')}/cgi/grplst.xml"
-        
+        url = self._url("cgi/grplst.xml")
         _LOGGER.debug("Group list XML URL: %s", url)
 
-        auth = None
-        username = self.http_config.get("username")
-        password = self.http_config.get("password")
-        if username and password:
-            auth = aiohttp.BasicAuth(username, password)
-
         try:
-            _LOGGER.debug("Fetching group list from %s", url)
-            
-            async with self._http_session.get(url, auth=auth) as response:
+            async with self._http_session.get(url, auth=self._auth()) as response:
                 _LOGGER.debug("HTTP response received (status: %d)", response.status)
                 response.raise_for_status()
                 xml_content = await response.text()
                 _LOGGER.debug("Received %d bytes of XML", len(xml_content))
-                
+
                 # Parse XML
                 try:
                     root = ET.fromstring(xml_content)
@@ -372,15 +337,15 @@ class NiceController:
                     num = group_elem.get('num', '0')
                     enabled = group_elem.get('enabled', '0')
                     desc = group_elem.get('desc', f'Group {num}')
-                    
-                    _LOGGER.debug("Group %d: num=%s, desc=%s, enabled=%s", 
+
+                    _LOGGER.debug("Group %d: num=%s, desc=%s, enabled=%s",
                                 idx, num, desc, enabled)
-                    
+
                     # Only process enabled groups
                     if enabled != '1':
                         _LOGGER.debug("  → Skipping (not enabled)")
                         continue
-                    
+
                     group = {
                         "num": num,
                         "name": desc,
@@ -428,21 +393,13 @@ class NiceController:
                 return
 
             # Build URL: /cgi/grpcmd.xml?req=R&num=1&dat=03000000
-            base_url = self.http_config.get("base_url", "")
-            url = f"{base_url.rstrip('/')}/cgi/grpcmd.xml?req=R&num={group_num}&dat={dat}"
-
-            # Prepare authentication
-            auth = None
-            username = self.http_config.get("username")
-            password = self.http_config.get("password")
-            if username and password:
-                auth = aiohttp.BasicAuth(username, password)
+            url = self._url(f"cgi/grpcmd.xml?req=R&num={group_num}&dat={dat}")
 
             _LOGGER.debug("Sending HTTP group request to: %s", url)
-            async with self._http_session.get(url, auth=auth) as response:
+            async with self._http_session.get(url, auth=self._auth()) as response:
                 response.raise_for_status()
                 xml_content = await response.text()
-                
+
                 # Parse response to check result
                 try:
                     root = ET.fromstring(xml_content)

@@ -43,7 +43,7 @@ You should see all 25 of your devices listed.
 # Open a blind
 ./blinds open "MBA 3"
 
-# Close a blind  
+# Close a blind
 ./blinds close "Kitchen 1"
 
 # Stop a blind
@@ -205,4 +205,3 @@ This is a standalone tool. For Home Assistant integration:
 - `blinds` - Main CLI script (this one!)
 - `send_command.py` - Lower-level command sender (uses device IDs)
 - `test_controller.py` - Diagnostic tool for troubleshooting
-

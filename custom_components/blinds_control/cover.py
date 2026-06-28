@@ -72,7 +72,7 @@ async def async_setup_entry(
     for group in groups:
         group_name = group.get("name", "")
         group_num = group.get("num", "")
-        
+
         if group_num:
             group_entity = BlindsGroupCover(
                 name=group_name,
@@ -159,8 +159,8 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-        return True
+        """Return True if the controller is reachable and reporting this device."""
+        return self.coordinator.last_update_success and self._status is not None
 
     @property
     def current_cover_position(self) -> int | None:
@@ -297,8 +297,8 @@ class BlindsGroupCover(
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-        return True
+        """Return True if the controller is reachable."""
+        return self.coordinator.last_update_success
 
     @property
     def current_cover_position(self) -> int | None:
