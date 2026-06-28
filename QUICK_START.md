@@ -5,7 +5,7 @@
 Your Nice controller at **192.168.10.235** has been successfully integrated with **25 devices** discovered:
 
 - MBA 1, MBA 3
-- MBR 1, MBR 2, MBR 4  
+- MBR 1, MBR 2, MBR 4
 - Sunroom 1-5 (5 blinds)
 - Kitchen 1-2 (2 blinds)
 - Office 1-12 (12 blinds)
@@ -139,7 +139,7 @@ automation:
     action:
       service: cover.open_cover
       target:
-        entity_id: 
+        entity_id:
           - cover.sunroom_1
           - cover.sunroom_2
           - cover.kitchen_1
@@ -179,8 +179,7 @@ automation:
 
 ---
 
-**Version:** 1.4.0  
-**Controller:** Nice IT4WiFi at 192.168.10.235  
-**Protocol:** HTTP/XML via `/cgi/devlst.xml` and `/cgi/devcmd.xml`  
+**Version:** 1.4.0
+**Controller:** Nice IT4WiFi at 192.168.10.235
+**Protocol:** HTTP/XML via `/cgi/devlst.xml` and `/cgi/devcmd.xml`
 **Devices:** 25 EI SM smart motors detected
-

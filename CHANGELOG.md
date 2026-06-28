@@ -233,4 +233,3 @@ Successfully tested with Nice controller - detected all 25 installed devices inc
 ### Features
 - Initial release of Nice Blinds Controller integration
 - Basic HTTP support
-

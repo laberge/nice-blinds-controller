@@ -14,8 +14,6 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "blinds_control"
 PLATFORMS: list[Platform] = [Platform.COVER]
 
-_LOGGER.debug("Blinds Control module loaded (domain: %s, platforms: %s)", DOMAIN, PLATFORMS)
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Blinds Control from a config entry."""

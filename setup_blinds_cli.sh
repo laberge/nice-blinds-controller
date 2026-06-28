@@ -86,4 +86,3 @@ echo "  blinds close \"Kitchen 1\""
 echo "  blinds list"
 echo ""
 echo "Setup complete! 🎉"
-

@@ -70,7 +70,7 @@ A Home Assistant custom integration for controlling blinds and motors via HTTP/n
 
 When you add new devices or create new groups on your controller:
 
-1. Go to **Settings** → **Devices & Services**  
+1. Go to **Settings** → **Devices & Services**
 2. Find **Nice Blinds Controller**
 3. Click **Configure** (gear icon)
 4. Select **"Refresh Devices & Groups"**

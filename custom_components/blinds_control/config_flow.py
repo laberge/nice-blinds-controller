@@ -17,8 +17,6 @@ from .nice_protocol import NiceController
 
 _LOGGER = logging.getLogger(__name__)
 
-_LOGGER.debug("Config flow module loaded")
-
 # HTTP connection details
 STEP_HTTP_CONNECTION_SCHEMA = vol.Schema(
     {
@@ -143,7 +141,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Store selected devices
             self._selected_devices = devices_data
             self._move_time = move_time
-            
+
             # Discover groups from controller
             try:
                 controller = NiceController(http_config=self._http_config)
@@ -153,7 +151,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception as err:
                 _LOGGER.warning("Could not discover groups: %s", err)
                 self._groups = []
-            
+
             # Go to review groups step
             return await self.async_step_review_groups()
 
@@ -161,7 +159,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="select_devices",
             data_schema=self._build_device_selection_schema(),
         )
-    def _create_entry_with_data(self, groups: list[dict[str, Any]]) -> FlowResult:
+    async def _create_entry_with_data(self, groups: list[dict[str, Any]]) -> FlowResult:
         """Create the config entry with all data."""
         entry_data = {
             "http_base_url": self._http_config["base_url"],
@@ -174,7 +172,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
 
         # Use controller URL as unique ID
-        self.async_set_unique_id(f"nice_controller_{self._http_config['base_url']}")
+        await self.async_set_unique_id(f"nice_controller_{self._http_config['base_url']}")
         self._abort_if_unique_id_configured()
 
         group_text = f", {len(groups)} groups" if groups else ""
@@ -203,11 +201,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if user_input.get("use_groups", True):
                 # User accepted the groups, create entry
-                return self._create_entry_with_data(self._groups)
+                return await self._create_entry_with_data(self._groups)
             else:
                 # User rejected groups, create entry without them
-                return self._create_entry_with_data([])
-        
+                return await self._create_entry_with_data([])
+
         # Build description of controller groups
         if self._groups:
             group_descriptions = []
@@ -215,9 +213,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 group_descriptions.append(
                     f"• {group['name']} (Group #{group['num']})"
                 )
-            
+
             groups_text = "\n".join(group_descriptions)
-            
+
             return self.async_show_form(
                 step_id="review_groups",
                 data_schema=vol.Schema({
@@ -231,7 +229,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             # No groups found on controller, skip to completion
             _LOGGER.info("No groups found on controller")
-            return self._create_entry_with_data([])
+            return await self._create_entry_with_data([])
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
@@ -239,7 +237,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
         self._groups = list(config_entry.data.get("groups", []))
         self._devices = config_entry.data.get("devices", [])
 
@@ -248,22 +245,22 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         return await self.async_step_main_menu()
-    
+
     async def async_step_main_menu(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Main options menu."""
         if user_input is not None:
             action = user_input.get("action")
-            
+
             if action == "refresh":
                 return await self.async_step_refresh_devices()
             elif action == "done":
                 return self.async_create_entry(title="", data={})
-        
+
         device_count = len(self._devices)
         group_count = len(self._groups)
-        
+
         return self.async_show_form(
             step_id="main_menu",
             data_schema=vol.Schema({
@@ -276,7 +273,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 "info": "Groups are managed in your Nice controller's web interface. Use 'Refresh' to update after making changes."
             }
         )
-    
+
     async def async_step_refresh_devices(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -284,7 +281,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             if not user_input.get("confirm_refresh", False):
                 return await self.async_step_main_menu()
-            
+
             # Re-discover devices and groups from controller
             http_config = {
                 "base_url": self.config_entry.data.get("http_base_url"),
@@ -292,43 +289,43 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 "password": self.config_entry.data.get("http_password"),
                 "timeout": self.config_entry.data.get("http_timeout", 10),
             }
-            
+
             try:
                 controller = NiceController(http_config=http_config)
-                
+
                 # Discover devices
                 new_devices = await controller.discover_devices()
                 _LOGGER.info("Refreshed devices: found %d devices", len(new_devices))
-                
+
                 # Discover groups
                 new_groups = await controller.discover_groups()
                 _LOGGER.info("Refreshed groups: found %d groups", len(new_groups))
-                
+
                 await controller.cleanup()
-                
+
                 # Update config entry
                 new_data = {**self.config_entry.data}
                 new_data["devices"] = new_devices
                 new_data["groups"] = new_groups
-                
+
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
                     data=new_data,
                 )
-                
+
                 # Reload the integration to apply changes
                 await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-                
+
                 # Update local state for menu display
                 self._devices = new_devices
                 self._groups = new_groups
-                
+
                 return self.async_create_entry(
                     title="",
                     data={},
                     description="Successfully refreshed devices and groups. Integration has been reloaded."
                 )
-                
+
             except Exception as err:
                 _LOGGER.error("Error refreshing devices: %s", err)
                 return self.async_show_form(
@@ -341,7 +338,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         "error": str(err)
                     }
                 )
-        
+
         return self.async_show_form(
             step_id="refresh_devices",
             data_schema=vol.Schema({
@@ -352,4 +349,3 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 "group_count": str(len(self._groups)),
             }
         )
-

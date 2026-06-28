@@ -10,7 +10,7 @@ Setup instructions for managing Nice Blinds CLI configuration in your dotfiles.
    ```zsh
    # Option A: Symlink
    ln -s ~/Developer/git/nice-blinds-controller/blinds.zsh ~/dotfiles/zsh/blinds.zsh
-   
+
    # Option B: Copy
    cp ~/Developer/git/nice-blinds-controller/blinds.zsh ~/dotfiles/zsh/blinds.zsh
    ```
@@ -22,23 +22,23 @@ Setup instructions for managing Nice Blinds CLI configuration in your dotfiles.
    ```
 
 3. **Set your password** (choose a secure method):
-   
+
    **Method A: Separate secure file (recommended)**
    ```zsh
    # Create ~/dotfiles/zsh/secrets.zsh (add to .gitignore!)
    export BLINDS_PASS="your_password_here"
-   
+
    # Source it before blinds.zsh
    source ~/dotfiles/zsh/secrets.zsh
    source ~/dotfiles/zsh/blinds.zsh
    ```
-   
+
    **Method B: Environment variable**
    ```zsh
    # In ~/dotfiles/zsh/env.zsh
    export BLINDS_PASS="your_password_here"
    ```
-   
+
    **Method C: Use a password manager**
    ```zsh
    # Example with 1Password CLI
@@ -157,7 +157,7 @@ Add to your dotfiles:
 office() {
   local cmd=$1
   [[ -z "$cmd" ]] && cmd="list"
-  
+
   if [[ "$cmd" == "open" ]] || [[ "$cmd" == "close" ]] || [[ "$cmd" == "stop" ]]; then
     for i in {1..12}; do
       blinds $cmd "Office $i"
@@ -172,7 +172,7 @@ office() {
 sunroom() {
   local cmd=$1
   [[ -z "$cmd" ]] && cmd="list"
-  
+
   if [[ "$cmd" == "open" ]] || [[ "$cmd" == "close" ]] || [[ "$cmd" == "stop" ]]; then
     for i in {1..5}; do
       blinds $cmd "Sunroom $i"
@@ -205,7 +205,7 @@ _blinds() {
     'stop:Stop a blind'
     'list:List all devices'
   )
-  
+
   devices=(
     '"MBA 3"'
     '"MBA 1"'
@@ -214,7 +214,7 @@ _blinds() {
     '"Office 1"'
     # ... add all your devices
   )
-  
+
   if (( CURRENT == 2 )); then
     _describe 'command' commands
   elif (( CURRENT == 3 )); then
@@ -294,4 +294,3 @@ sunroom() { for i in {1..5}; do blinds ${1:-list} "Sunroom $i"; sleep 0.3; done 
 ---
 
 **Ready to go!** Your blinds CLI will now be managed through your dotfiles and work across machines. 🎉
-
