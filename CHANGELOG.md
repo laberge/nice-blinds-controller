@@ -5,6 +5,15 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.3] - 2026-06-29
+
+### Added
+- **Tests**: pytest suite covering the protocol, cover, and config-flow layers, plus a pre-commit hook that runs the suite and hygiene checks before every commit.
+- **CLI**: `requirements.txt` for the standalone scripts and dependency installation in the CLI setup script.
+
+### Fixed
+- **Integration**: Hardened the `NiceController` and fixed config-flow bugs surfaced by the new test suite.
+
 ## [1.9.2] - 2025-11-25
 
 ### Fixed
