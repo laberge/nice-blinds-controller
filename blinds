@@ -7,10 +7,10 @@ import sys
 import os
 import xml.etree.ElementTree as ET
 
-# Configuration - Update these with your settings or use environment variables
-CONTROLLER_URL = os.getenv("BLINDS_URL", "http://192.168.10.235")
-USERNAME = os.getenv("BLINDS_USER", "aaron")
-PASSWORD = os.getenv("BLINDS_PASS", "")  # Set BLINDS_PASS env var or edit here
+# Configuration - set these environment variables or edit the defaults here
+CONTROLLER_URL = os.getenv("BLINDS_URL", "")  # e.g. http://192.168.1.100
+USERNAME = os.getenv("BLINDS_USER", "admin")
+PASSWORD = os.getenv("BLINDS_PASS", "")
 
 
 async def get_devices(base_url: str, username: str, password: str):
@@ -211,7 +211,7 @@ async def send_group_command(group_name: str, command: str, config_url: str, con
     print(f"{'='*60}")
     print(f"\n  NOTE: Group executes actions programmed in controller.")
     print(f"        To verify/edit group devices, visit:")
-    print(f"        http://192.168.10.235/grp_list.htm")
+    print(f"        {config_url.rstrip('/')}/grp_list.htm")
     print()
 
     # Map commands to Nice protocol data codes
@@ -336,41 +336,33 @@ Group Commands (hardware-synchronized):
   Groups are configured on your Nice controller and execute at the hardware level.
 
 Examples:
-  ./blinds open "MBA 3"
+  ./blinds open "Living Room"
   ./blinds close "Kitchen 1"
   ./blinds stop "Office 1"
   ./blinds status              # Show all devices status
   ./blinds status "Office 1"   # Show specific device status
-  ./blinds list
+  ./blinds list                # Run this to see your device names
   ./blinds list-groups         # List all controller groups
 
   # Group commands (truly simultaneous via controller)
-  ./blinds open-group "Office"   # Opens all office blinds instantly
-  ./blinds close-group "Sunroom" # Closes all sunroom blinds instantly
-  ./blinds stop-group "Kitchen"  # Stops all kitchen blinds
+  ./blinds open-group "Office"
+  ./blinds close-group "Sunroom"
+  ./blinds stop-group "Kitchen"
 
 Configure Groups:
   Groups are managed in your Nice controller's web interface at:
-  http://192.168.10.235/grp_list.htm
-
-Your Devices:
-  MBA 3, MBA 1, MBR 1, MBR 2, MBR 4
-  Sunroom 1, Sunroom 2, Sunroom 3, Sunroom 4, Sunroom 5
-  Kitchen 1, Kitchen 2
-  Office 1-12
-  Living Room
+  http://<controller-ip>/grp_list.htm
 
 Configuration:
-  Set BLINDS_PASS environment variable or edit PASSWORD at top of script.
+  Set these environment variables (e.g. in ~/.zshrc):
+    export BLINDS_URL="http://192.168.1.100"
+    export BLINDS_USER="admin"
+    export BLINDS_PASS="your_password"
 
   Current config:
-    URL: {CONTROLLER_URL}
+    URL: {CONTROLLER_URL or "(not configured)"}
     User: {USERNAME}
     Pass: {pass_status}
-
-  To configure:
-    export BLINDS_PASS="your_password"
-    Or edit PASSWORD variable in the script.
 """)
 
 
@@ -425,7 +417,7 @@ async def list_groups_async(config_url: str, config_user: str, config_pass: str)
         print(f"Use: ./blinds <open|close|stop>-group \"<group name>\"")
         print(f"\nNote: Groups execute actions programmed in your controller.")
         print(f"      To verify/edit which devices are in each group:")
-        print(f"      http://192.168.10.235/grp_list.htm")
+        print(f"      {config_url.rstrip('/')}/grp_list.htm")
         print(f"{'='*60}\n")
 
     except aiohttp.ClientConnectorError as e:
@@ -455,14 +447,17 @@ if __name__ == "__main__":
 
     command = sys.argv[1].lower()
 
-    # Check password is set
+    # Check configuration is set
+    if not CONTROLLER_URL:
+        print("✗ Error: Controller URL not configured")
+        print("\nSet it via environment variable (e.g. in ~/.zshrc):")
+        print("  export BLINDS_URL='http://192.168.1.100'")
+        sys.exit(1)
+
     if not PASSWORD:
         print("✗ Error: Password not configured")
-        print("\nSet your password using one of these methods:")
-        print("  1. Environment variable: export BLINDS_PASS='your_password'")
-        print("  2. Edit the script and set PASSWORD = 'your_password'")
-        print("  3. Add to your ~/.bashrc or ~/.zshrc:")
-        print("     export BLINDS_PASS='your_password'")
+        print("\nSet it via environment variable (e.g. in ~/.zshrc):")
+        print("  export BLINDS_PASS='your_password'")
         sys.exit(1)
 
     # Handle list command
@@ -585,7 +580,7 @@ if __name__ == "__main__":
         if len(sys.argv) < 3:
             print(f"✗ Error: Group name required")
             print(f"\nRun './blinds list-groups' to see available groups")
-            print(f"Or configure groups in controller web UI: http://192.168.10.235/grp_list.htm")
+            print(f"Or configure groups in the controller web UI: {CONTROLLER_URL.rstrip('/')}/grp_list.htm")
             sys.exit(1)
 
         group_name = sys.argv[2]

@@ -5,6 +5,17 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.4] - 2026-07-03
+
+### Fixed
+- **Security**: The config flow no longer writes the controller password to debug logs.
+- **Integration**: Device IDs now normalize `ept` to uppercase hex during discovery, so controllers reporting lowercase endpoints get correct status matching.
+
+### Changed
+- **Integration**: Refactored `NiceController` — shared XML fetching/parsing, module-level protocol constants, and quieter logging (routine operations now log at debug level).
+- **Integration**: Group covers report `assumed_state`, matching Home Assistant conventions for entities without state feedback.
+- **CLI/Docs**: Genericized all CLI scripts and documentation (no hardcoded controller addresses or personal device lists); removed personal setup docs; the CLI now requires `BLINDS_URL` to be set.
+
 ## [1.9.3] - 2026-06-29
 
 ### Added

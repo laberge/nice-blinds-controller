@@ -129,7 +129,7 @@ Control your blinds from the command line without Home Assistant — handy for t
 
 ```bash
 # Individual devices
-blinds open "MBA 3"
+blinds open "Living Room"
 blinds close "Kitchen 1"
 blinds stop "Office 1"
 blinds status              # state, position, and ID for all devices
@@ -142,7 +142,7 @@ blinds close-group "Office"
 blinds stop-group "Kitchen"
 ```
 
-Quick setup: `./setup_blinds_cli.sh`. See the [CLI Documentation](BLINDS_CLI_README.md) for full usage, the [Quick Start Guide](QUICK_START.md), and [Dotfiles Setup](DOTFILES_SETUP.md).
+Quick setup: `./setup_blinds_cli.sh`. See the [CLI Documentation](BLINDS_CLI_README.md) for full usage.
 
 ## Support
 

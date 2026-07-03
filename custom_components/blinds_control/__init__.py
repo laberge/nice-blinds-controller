@@ -1,15 +1,10 @@
 """The Blinds Control integration."""
 from __future__ import annotations
 
-import logging
-from typing import Any
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
-
-_LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "blinds_control"
 PLATFORMS: list[Platform] = [Platform.COVER]

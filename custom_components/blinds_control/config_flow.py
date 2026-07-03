@@ -8,7 +8,7 @@ import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 import homeassistant.helpers.config_validation as cv
 
@@ -42,7 +42,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialize config flow."""
-        _LOGGER.debug("Config flow initialized")
         self._http_config: dict[str, Any] = {}
         self._discovered_devices: list[dict[str, str]] = []
         self._selected_devices: list[dict[str, str]] = []
@@ -53,26 +52,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step - HTTP connection configuration."""
-        _LOGGER.debug("async_step_user called (user_input: %s)", user_input)
         return await self.async_step_http_connection()
 
     async def async_step_http_connection(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle HTTP connection configuration."""
-        _LOGGER.debug("async_step_http_connection called (user_input: %s)", user_input)
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Validate URL format
             base_url = user_input.get("http_base_url", "")
-            _LOGGER.debug("Validating URL: %s", base_url)
             if not base_url.startswith(("http://", "https://")):
-                _LOGGER.debug("URL validation failed - invalid format")
                 errors["http_base_url"] = "invalid_url"
             else:
-                _LOGGER.debug("URL validation passed, connecting to controller...")
-                # Try to connect and discover devices
                 self._http_config = {
                     "base_url": base_url,
                     "username": user_input.get("http_username"),
@@ -81,18 +73,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
 
                 try:
-                    _LOGGER.debug("Creating NiceController with config: %s", self._http_config)
                     controller = NiceController(http_config=self._http_config)
-                    _LOGGER.debug("Discovering devices...")
                     self._discovered_devices = await controller.discover_devices()
-                    _LOGGER.info("Discovered %d devices from controller", len(self._discovered_devices))
+                    _LOGGER.debug("Discovered %d devices from controller", len(self._discovered_devices))
                     await controller.cleanup()
 
                     if not self._discovered_devices:
                         _LOGGER.warning("No devices found on controller")
                         errors["base"] = "no_devices_found"
                     else:
-                        _LOGGER.debug("Proceeding to device selection")
                         return await self.async_step_select_devices()
 
                 except aiohttp.ClientResponseError as err:
@@ -147,7 +136,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 controller = NiceController(http_config=self._http_config)
                 self._groups = await controller.discover_groups()
                 await controller.cleanup()
-                _LOGGER.info("Discovered %d groups from controller", len(self._groups))
+                _LOGGER.debug("Discovered %d groups from controller", len(self._groups))
             except Exception as err:
                 _LOGGER.warning("Could not discover groups: %s", err)
                 self._groups = []
@@ -159,6 +148,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="select_devices",
             data_schema=self._build_device_selection_schema(),
         )
+
     async def _create_entry_with_data(self, groups: list[dict[str, Any]]) -> FlowResult:
         """Create the config entry with all data."""
         entry_data = {
@@ -194,6 +184,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional("move_time", default=30): cv.positive_int,
             }
         )
+
     async def async_step_review_groups(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -206,15 +197,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # User rejected groups, create entry without them
                 return await self._create_entry_with_data([])
 
-        # Build description of controller groups
         if self._groups:
-            group_descriptions = []
-            for group in self._groups:
-                group_descriptions.append(
-                    f"• {group['name']} (Group #{group['num']})"
-                )
-
-            groups_text = "\n".join(group_descriptions)
+            groups_text = "\n".join(
+                f"• {group['name']} (Group #{group['num']})" for group in self._groups
+            )
 
             return self.async_show_form(
                 step_id="review_groups",

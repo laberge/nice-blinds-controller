@@ -12,11 +12,10 @@ logger:
     custom_components.blinds_control.nice_protocol: debug
 
 # This will log:
-# - HTTP requests and responses (including full HTML content)
-# - Device discovery details
-# - Authentication attempts
+# - HTTP requests to the controller
+# - Device and group discovery details
+# - XML parsing and device detection
 # - All commands sent to the controller
-# - HTML parsing and device detection
 #
 # After adding this, restart Home Assistant and check logs at:
 # Settings > System > Logs

@@ -1,207 +1,93 @@
-# Nice Blinds CLI - Simple Control
+# Nice Blinds CLI
 
-Simple command-line interface for controlling your Nice blinds using friendly device names.
+Standalone command-line interface for controlling Nice blinds by device name — no Home Assistant required.
 
-## Quick Setup
+## Setup
 
-### 1. Set Your Password
+Run the interactive setup script, which installs dependencies and generates shell configuration:
 
-Choose one of these methods:
-
-**Method A: Environment Variable (Recommended)**
 ```bash
-# Add to your ~/.zshrc (or ~/.bashrc if using bash)
-echo 'export BLINDS_PASS="your_password_here"' >> ~/.zshrc
-source ~/.zshrc
+./setup_blinds_cli.sh
 ```
 
-**Method B: Edit the Script Directly**
+Or configure manually with environment variables (e.g. in `~/.zshrc`):
+
 ```bash
-# Edit the blinds script
-nano blinds
-
-# Find this line near the top:
-PASSWORD = os.getenv("BLINDS_PASS", "")
-
-# Change it to:
-PASSWORD = os.getenv("BLINDS_PASS", "your_password_here")
+export BLINDS_URL="http://192.168.1.100"   # your controller's URL
+export BLINDS_USER="admin"                 # controller username
+export BLINDS_PASS="your_password"         # controller password
 ```
 
-### 2. Verify Setup
+> **Tip:** Keep `BLINDS_PASS` in a separate gitignored file or load it from a password manager (e.g. `export BLINDS_PASS="$(op read 'op://Personal/Nice Controller/password')"`) rather than committing it to your dotfiles.
+
+Verify the setup:
 
 ```bash
 ./blinds list
 ```
 
-You should see all 25 of your devices listed.
+You should see every device configured on your controller.
 
 ## Usage
 
-### Basic Commands
+### Device commands
 
 ```bash
-# Open a blind
-./blinds open "MBA 3"
-
-# Close a blind
-./blinds close "Kitchen 1"
-
-# Stop a blind
-./blinds stop "Office 1"
-
-# List all devices
-./blinds list
-
-# Show status of all devices (includes group summary)
-./blinds status
-
-# Show status of a specific device
-./blinds status "Office 1"
+./blinds open "Living Room"    # Open a blind
+./blinds close "Kitchen 1"     # Close a blind
+./blinds stop "Office 1"       # Stop a blind
+./blinds list                  # List all devices with their IDs
+./blinds status                # Status of all devices (plus group summary)
+./blinds status "Office 1"     # Status of one device
 ```
 
-### Group Commands
+Device names come from your controller's configuration and are matched case-insensitively.
+
+### Group commands
 
 ```bash
-# List all controller groups
-./blinds list-groups
-
-# Open all blinds in a group (truly simultaneous via hardware)
-./blinds open-group "Office"
-
-# Close all blinds in a group
-./blinds close-group "Sunroom"
-
-# Stop all blinds in a group
-./blinds stop-group "Kitchen"
-
-# Groups are configured in your Nice controller's web interface
-# Commands execute at the hardware level for instant, synchronized operation
+./blinds list-groups           # List all controller groups
+./blinds open-group "Office"   # Open all blinds in a group
+./blinds close-group "Sunroom" # Close all blinds in a group
+./blinds stop-group "Kitchen"  # Stop all blinds in a group
 ```
 
-### Your Device Names
+Group commands execute at the hardware level, so all member devices move simultaneously.
 
-- **Master Bedroom Area**: MBA 1, MBA 3
-- **Master Bedroom**: MBR 1, MBR 2, MBR 4
-- **Sunroom**: Sunroom 1, Sunroom 2, Sunroom 3, Sunroom 4, Sunroom 5
-- **Kitchen**: Kitchen 1, Kitchen 2
-- **Office**: Office 1-12
-- **Living Room**: Living Room
-
-### Shell Aliases (Optional)
-
-Add these to your `~/.zshrc` for even simpler commands:
+### Shell aliases (optional)
 
 ```bash
-# Add to ~/.zshrc
-alias open-blinds='./path/to/blinds open'
-alias close-blinds='./path/to/blinds close'
-alias stop-blinds='./path/to/blinds stop'
-
-# Usage examples:
-# open-blinds "MBA 3"
-# close-blinds "Kitchen 1"
+# Add to ~/.zshrc — see blinds.zsh for a ready-made template
+alias blinds='~/path/to/nice-blinds-controller/blinds'
+alias office-open='blinds open-group "Office"'
 ```
 
-### Advanced: Create Individual Blind Commands
+## Configuring groups
 
-```bash
-# Add to ~/.zshrc
-alias mba3-open='~/path/to/blinds open "MBA 3"'
-alias mba3-close='~/path/to/blinds close "MBA 3"'
-alias kitchen-open='~/path/to/blinds open "Kitchen 1"'
+Groups are managed in your Nice controller's web interface, not in this CLI:
 
-# Then just run:
-# mba3-open
-# kitchen-close
-```
+1. Open `http://<controller-ip>/grp_list.htm`
+2. Create a group and add devices to it
+3. Save — the group is instantly available to the CLI, no restart needed
 
-## Configuration
+### How controller groups work
 
-The script uses these environment variables (or edit the script directly):
+Nice controller groups execute **pre-programmed actions**: when you send a group command, the controller replays whatever actions were programmed for that group on each member device, simultaneously. A group may span rooms, and different devices may be programmed with different actions. For predictable behavior, create groups where all devices perform the same action.
 
-- `BLINDS_URL` - Controller URL (default: http://192.168.10.235)
-- `BLINDS_USER` - Username (default: aaron)
-- `BLINDS_PASS` - Password (required)
-
-## Examples
-
-```bash
-# List all groups configured on your controller
-./blinds list-groups
-
-# Morning routine - open all sunroom blinds (hardware-synchronized)
-./blinds open-group "Sunroom"
-
-# Close all office blinds for presentation
-./blinds close-group "Office"
-
-# Check status of all devices and groups
-./blinds status
-
-# Individual device control
-./blinds open "MBA 3"
-./blinds close "Kitchen 1"
-./blinds stop "Office 1"
-```
-
-## Configuring Groups
-
-Groups are managed in your Nice controller's web interface:
-
-1. Open: `http://192.168.10.235/grp_list.htm` (use your controller's IP)
-2. Click "New" to create a group
-3. Add devices to the group
-4. Save the group
-5. Groups are instantly available to the CLI - no restart needed!
-
-When you execute a group command, the controller sends the command to all devices simultaneously at the hardware level for perfect synchronization.
-
-### How Controller Groups Work
-
-Nice controller groups execute **pre-programmed actions**. When you send a group command:
-
-1. The controller receives your command (open/close/stop)
-2. The controller executes the actions programmed for that group
-3. Each device in the group receives its pre-programmed command **simultaneously**
-
-**Important:**
-- Groups execute whatever actions were programmed in the controller
-- A group may include devices from multiple rooms
-- Different devices may have different actions (some open, some close)
-- This is controlled in the Nice controller's web interface, not in this CLI
-
-**To see exactly what a group will do:**
-- Open your controller's web UI: `http://192.168.10.235/grp_list.htm`
-- View or edit the group to see which devices and actions are configured
-
-**Recommendation:**
-For predictable behavior, create groups in your controller where all devices perform the same action (all open, all close, etc.).
+To see exactly what a group will do, view it in the controller's web UI.
 
 ## Troubleshooting
 
-**"Device not found" error**
-- Run `./blinds list` to see exact device names
-- Device names are case-insensitive
-- Make sure quotes are around the device name
+**"Device not found"** — run `./blinds list` to see exact names; quote names containing spaces.
 
-**"Password not configured" error**
-- Set BLINDS_PASS environment variable
-- OR edit the script and hardcode the password
+**"Password not configured" / "Controller URL not configured"** — export `BLINDS_PASS` / `BLINDS_URL` as shown above.
 
-**Connection timeout**
-- Verify controller is reachable: `ping 192.168.10.235`
-- Check URL in script matches your controller IP
+**Connection timeout** — verify the controller is reachable (`ping <controller-ip>`) and `BLINDS_URL` is correct.
 
-## Integration with Home Assistant
+## Related tools
 
-This is a standalone tool. For Home Assistant integration:
-1. Install the Nice Blinds Controller integration via HACS
-2. Update to v1.4.0 or later
-3. Configure with your controller details
-4. All 25 devices will be discovered automatically
+- `blinds` — this CLI (friendly device names)
+- `send_command.py` — lower-level command sender using raw device IDs
+- `test_controller.py` — connection/discovery diagnostic
 
-## Script Files
-
-- `blinds` - Main CLI script (this one!)
-- `send_command.py` - Lower-level command sender (uses device IDs)
-- `test_controller.py` - Diagnostic tool for troubleshooting
+For Home Assistant integration, see the main [README](README.md).

@@ -25,11 +25,15 @@ def http_config():
 
 @pytest.fixture
 def device_list_xml():
-    """A device list with installed and not-installed devices (adr is hex)."""
+    """A device list with installed and not-installed devices (adr is hex).
+
+    The second device reports a lowercase ept ("0f") to verify that device
+    IDs are normalized to uppercase hex everywhere.
+    """
     return """<?xml version="1.0"?>
 <devlst>
   <device installed="1" mac="AA:01" productName="Era Mat MA" adr="01" ept="01" desc="MBA 3" sta="05" pos="0" inp="0"/>
-  <device installed="1" mac="AA:0F" productName="Era Mat MA" adr="01" ept="0F" desc="Office 3" sta="04" pos="100" inp="0"/>
+  <device installed="1" mac="AA:0F" productName="Era Mat MA" adr="01" ept="0f" desc="Office 3" sta="04" pos="100" inp="0"/>
   <device installed="0" mac="AA:20" productName="Era Mat MA" adr="01" ept="20" desc="Spare" sta="00" pos="255" inp="0"/>
   <device installed="1" mac="AA:05" productName="Era Mat MA" adr="0A" ept="05" desc="Sunroom 1" sta="02" pos="255" inp="0"/>
 </devlst>"""

@@ -20,11 +20,12 @@ async def test_discover_devices_parses_and_converts(http_config, device_list_xml
     await controller.cleanup()
 
     by_id = {d["id"]: d for d in devices}
-    # Only installed devices; adr hex -> decimal, ept kept as uppercase hex.
+    # Only installed devices; adr hex -> decimal, ept normalized to uppercase hex.
     assert set(by_id) == {"1,01", "1,0F", "10,05"}
     assert by_id["1,01"]["name"] == "MBA 3"
     assert by_id["1,01"]["adr"] == "1"
     assert by_id["1,01"]["ept"] == "01"
+    assert by_id["1,0F"]["ept"] == "0F"  # reported as "0f" in the XML
     assert by_id["10,05"]["adr"] == "10"  # adr "0A" -> 10
 
 
@@ -136,7 +137,6 @@ async def test_cleanup_closes_session(http_config):
     assert controller._http_session is not None
     await controller.cleanup()
     assert controller._http_session is None
-    assert controller._initialized is False
 
 
 def test_auth_none_without_credentials():

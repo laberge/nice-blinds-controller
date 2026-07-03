@@ -14,16 +14,19 @@ echo "Installing Python dependencies..."
 pip3 install -r "$SCRIPT_DIR/requirements.txt" -q
 echo ""
 
-# Prompt for password
+# Prompt for controller details
+read "CONTROLLER_URL?Controller URL (e.g. http://192.168.1.100): "
+read "CONTROLLER_USER?Username [admin]: "
+CONTROLLER_USER="${CONTROLLER_USER:-admin}"
 echo "Enter your Nice controller password (or press Enter to skip):"
 read -s PASSWORD
 echo ""
 
 # Generate configuration
 CONFIG="# Nice Blinds CLI Configuration
+export BLINDS_URL='$CONTROLLER_URL'
+export BLINDS_USER='$CONTROLLER_USER'
 export BLINDS_PASS='$PASSWORD'
-export BLINDS_URL='http://192.168.10.235'
-export BLINDS_USER='aaron'
 alias blinds='$SCRIPT_DIR/blinds'
 "
 
@@ -42,11 +45,8 @@ read "choice?Enter choice (1-3): "
 case $choice in
     1)
         echo ""
-        echo "Add the above configuration to your dotfiles."
-        echo "Suggested locations:"
-        echo "  - ~/dotfiles/.zshrc"
-        echo "  - ~/dotfiles/zsh/env.zsh"
-        echo "  - ~/dotfiles/aliases.zsh"
+        echo "Add the above configuration to your dotfiles,"
+        echo "keeping BLINDS_PASS in a separate gitignored file."
         echo ""
         echo "Then reload your shell:"
         echo "  source ~/.zshrc"
@@ -64,9 +64,9 @@ case $choice in
         echo "Manual setup instructions:"
         echo ""
         echo "1. Add these environment variables to your shell config:"
+        echo "   export BLINDS_URL='$CONTROLLER_URL'"
+        echo "   export BLINDS_USER='$CONTROLLER_USER'"
         echo "   export BLINDS_PASS='your_password'"
-        echo "   export BLINDS_URL='http://192.168.10.235'"
-        echo "   export BLINDS_USER='aaron'"
         echo ""
         echo "2. Add this alias:"
         echo "   alias blinds='$SCRIPT_DIR/blinds'"
@@ -81,8 +81,8 @@ esac
 
 echo ""
 echo "Usage examples:"
-echo "  blinds open \"MBA 3\""
-echo "  blinds close \"Kitchen 1\""
 echo "  blinds list"
+echo "  blinds open \"Living Room\""
+echo "  blinds close \"Kitchen 1\""
 echo ""
 echo "Setup complete! 🎉"

@@ -2,40 +2,43 @@
 from __future__ import annotations
 
 import logging
+import xml.etree.ElementTree as ET
 from typing import Any
 
 import aiohttp
-import xml.etree.ElementTree as ET
 
 _LOGGER = logging.getLogger(__name__)
 
+# Nice protocol command codes; group commands pad the code to four bytes.
+CMD_CODES = {"stop": "02", "open": "03", "close": "04"}
+GROUP_CMD_DATA = {cmd: f"{code}000000" for cmd, code in CMD_CODES.items()}
+
+# Status codes reported in the devlst.xml `sta` attribute.
+STATUS_OPENING = "02"
+STATUS_CLOSING = "03"
+STATUS_OPEN = "04"
+STATUS_CLOSED = "05"
+
+# The `pos` attribute value meaning "position unknown".
+POSITION_UNKNOWN = "255"
+
+# Markers that indicate the controller answered with its login page.
+_HTML_MARKERS = ("<!doctype html", "<html", "login", "password")
+
 
 class NiceController:
-    """HTTP controller for Nice blind motors."""
+    """HTTP client for a Nice controller (IT4WiFi, MyNice, etc.)."""
 
     def __init__(self, http_config: dict[str, Any]) -> None:
-        """Initialize the Nice HTTP controller.
-
-        Args:
-            http_config: HTTP configuration dict with base_url, username, password, timeout
-        """
+        """Initialize with a config dict of base_url, username, password, timeout."""
         self.http_config = http_config
-        self._initialized = False
-        self._http_session = None
-
-        _LOGGER.debug("NiceController initialized (base_url: %s)", http_config.get("base_url"))
-
-    async def _initialize_http(self) -> None:
-        """Initialize HTTP session for API communication."""
-        timeout = aiohttp.ClientTimeout(total=self.http_config.get("timeout", 10))
-        self._http_session = aiohttp.ClientSession(timeout=timeout)
-        self._initialized = True
-        _LOGGER.debug("HTTP session initialized (timeout: %ds)", self.http_config.get("timeout", 10))
+        self._http_session: aiohttp.ClientSession | None = None
 
     async def _ensure_initialized(self) -> None:
-        """Ensure the controller is initialized."""
-        if not self._initialized:
-            await self._initialize_http()
+        """Create the shared HTTP session on first use."""
+        if self._http_session is None:
+            timeout = aiohttp.ClientTimeout(total=self.http_config.get("timeout", 10))
+            self._http_session = aiohttp.ClientSession(timeout=timeout)
 
     def _auth(self) -> aiohttp.BasicAuth | None:
         """Build basic auth from config, or None if no credentials."""
@@ -50,144 +53,126 @@ class NiceController:
         base_url = self.http_config.get("base_url", "")
         return f"{base_url.rstrip('/')}/{path}"
 
-    async def send_command(self, device_id: str, command: str) -> None:
-        """Send a command to the Nice motor via HTTP.
+    async def _fetch_xml(self, path: str) -> ET.Element:
+        """GET a controller endpoint and return the parsed XML root.
 
-        Args:
-            device_id: Device identifier in format "adr,ept" (e.g., "1,0F")
-            command: Command to send (open, close, stop)
+        Raises ClientResponseError on HTTP errors and when the controller
+        answers with its HTML login page (misconfigured credentials).
         """
         await self._ensure_initialized()
 
-        _LOGGER.info("Sending command: %s to device: %s", command, device_id)
+        async with self._http_session.get(self._url(path), auth=self._auth()) as response:
+            response.raise_for_status()
+            text = await response.text()
 
-        if not self._http_session:
-            _LOGGER.error("HTTP session not initialized")
-            return
+            lowered = text.lower()
+            if any(marker in lowered for marker in _HTML_MARKERS):
+                _LOGGER.error("Received HTML/login page instead of XML. Check credentials.")
+                raise aiohttp.ClientResponseError(
+                    request_info=response.request_info,
+                    history=response.history,
+                    status=401,
+                    message="Authentication failed - received HTML instead of XML",
+                )
 
-        if not device_id:
-            _LOGGER.error("Device ID is required for HTTP commands")
+        try:
+            return ET.fromstring(text)
+        except ET.ParseError as err:
+            _LOGGER.error("Failed to parse XML from %s: %s", path, err)
+            raise
+
+    @staticmethod
+    def _parse_device_id(device_elem: ET.Element) -> str | None:
+        """Return the "adr,ept" command ID for a device element.
+
+        The controller reports adr/ept as hex, but device commands expect
+        a decimal adr and an uppercase-hex ept.
+        """
+        try:
+            adr_dec = int(device_elem.get("adr", "0"), 16)
+        except ValueError:
+            _LOGGER.debug("Skipping device with invalid adr: %s", device_elem.get("adr"))
+            return None
+        return f"{adr_dec},{device_elem.get('ept', '0').upper()}"
+
+    async def send_command(self, device_id: str, command: str) -> None:
+        """Send an open/close/stop command to a device ("adr,ept" ID)."""
+        cmd = CMD_CODES.get(command)
+        if cmd is None:
+            _LOGGER.error("Unknown command: %s", command)
             return
 
         try:
-            # Device ID format: "adr,ept" (e.g., "1,0F")
-            parts = device_id.split(",")
-            if len(parts) != 2:
-                _LOGGER.error("Invalid device_id format. Expected 'adr,ept', got: %s", device_id)
-                return
+            adr, ept = device_id.split(",")
+        except ValueError:
+            _LOGGER.error("Invalid device_id format. Expected 'adr,ept', got: %s", device_id)
+            return
 
-            adr = parts[0]
-            ept = parts[1]
+        await self._ensure_initialized()
+        url = self._url(f"cgi/devcmd.xml?adr={adr}&ept={ept}&cmd={cmd}")
+        _LOGGER.debug("Sending command '%s' to device %s", command, device_id)
+        async with self._http_session.get(url, auth=self._auth()) as response:
+            response.raise_for_status()
 
-            # Map commands to Nice protocol command codes
-            cmd_codes = {
-                "stop": "02",
-                "open": "03",
-                "close": "04",
-            }
+    async def send_group_command(self, group_num: str, command: str) -> None:
+        """Send an open/close/stop command to a controller group."""
+        dat = GROUP_CMD_DATA.get(command)
+        if dat is None:
+            _LOGGER.error("Unknown command: %s", command)
+            return
 
-            cmd = cmd_codes.get(command)
-            if not cmd:
-                _LOGGER.error("Unknown command: %s", command)
-                return
+        await self._ensure_initialized()
+        url = self._url(f"cgi/grpcmd.xml?req=R&num={group_num}&dat={dat}")
+        _LOGGER.debug("Sending command '%s' to group %s", command, group_num)
+        async with self._http_session.get(url, auth=self._auth()) as response:
+            response.raise_for_status()
+            text = await response.text()
 
-            # Build URL: /cgi/devcmd.xml?adr=1&ept=0F&cmd=03
-            url = self._url(f"cgi/devcmd.xml?adr={adr}&ept={ept}&cmd={cmd}")
-
-            _LOGGER.debug("Sending HTTP request to: %s", url)
-            async with self._http_session.get(url, auth=self._auth()) as response:
-                response.raise_for_status()
-                _LOGGER.info(
-                    "HTTP command '%s' sent successfully to device %s (status: %s)",
-                    command, device_id, response.status
-                )
-
-        except aiohttp.ClientError as err:
-            _LOGGER.error("HTTP request failed for command '%s': %s", command, err)
-            raise
-        except Exception as err:
-            _LOGGER.error("Unexpected error sending HTTP command '%s': %s", command, err)
-            raise
+        try:
+            result = ET.fromstring(text).findtext(".//result", "0")
+        except ET.ParseError:
+            _LOGGER.warning("Could not parse group command response")
+            return
+        if result != "0":
+            _LOGGER.warning("Group command '%s' returned result: %s", command, result)
 
     async def test_connection(self) -> bool:
-        """Test if the controller is reachable.
-
-        Returns:
-            True if connection successful, False otherwise
-        """
+        """Return True if the controller base URL is reachable."""
         await self._ensure_initialized()
 
         base_url = self.http_config.get("base_url", "")
-        _LOGGER.debug("Testing connection to: %s", base_url)
-
         try:
             async with self._http_session.get(base_url, auth=self._auth()) as response:
-                _LOGGER.debug("Connection test response: %d", response.status)
                 return response.status < 500
         except Exception as err:
             _LOGGER.error("Connection test failed: %s", err)
             return False
 
-    async def get_device_status(self, device_id: str) -> dict[str, str] | None:
-        """Get current status of a specific device.
-
-        Args:
-            device_id: Device identifier in format "adr,ept" (e.g., "1,0E")
-
-        Returns:
-            Dict with device status info or None if not found
-        """
+    async def get_device_status(self, device_id: str) -> dict[str, Any] | None:
+        """Get current status of a single device ("adr,ept" ID)."""
         statuses = await self.get_all_device_status()
         return statuses.get(device_id)
 
     async def get_all_device_status(self) -> dict[str, dict[str, Any]]:
-        """Get status for all installed devices on the controller."""
-        await self._ensure_initialized()
-
-        if not self._http_session:
-            _LOGGER.error("HTTP session not initialized")
-            return {}
-
-        url = self._url("cgi/devlst.xml")
-
-        try:
-            async with self._http_session.get(url, auth=self._auth()) as response:
-                response.raise_for_status()
-                xml_content = await response.text()
-
-        except Exception as err:
-            _LOGGER.error("Error retrieving device status list: %s", err)
-            raise
-
-        try:
-            root = ET.fromstring(xml_content)
-        except ET.ParseError as err:
-            _LOGGER.error("Failed to parse device status XML: %s", err)
-            raise
+        """Get status for all installed devices, keyed by "adr,ept" ID."""
+        root = await self._fetch_xml("cgi/devlst.xml")
 
         status_map: dict[str, dict[str, Any]] = {}
         for device_elem in root.findall(".//device"):
             if device_elem.get("installed", "0") != "1":
                 continue
-
-            adr = device_elem.get("adr", "0")
-            ept = device_elem.get("ept", "0").upper()
-            try:
-                adr_dec = str(int(adr, 16))
-            except ValueError:
-                _LOGGER.debug("Skipping device with invalid adr: %s", adr)
+            device_id = self._parse_device_id(device_elem)
+            if device_id is None:
                 continue
 
-            device_id = f"{adr_dec},{ept}"
-            status_code = device_elem.get("sta", "00").upper()
-            pos_raw = device_elem.get("pos", "255")
+            pos_raw = device_elem.get("pos", POSITION_UNKNOWN)
             try:
-                position = None if pos_raw == "255" else int(pos_raw)
-            except (TypeError, ValueError):
+                position = None if pos_raw == POSITION_UNKNOWN else int(pos_raw)
+            except ValueError:
                 position = None
 
             status_map[device_id] = {
-                "status_code": status_code,
+                "status_code": device_elem.get("sta", "00").upper(),
                 "position": position,
                 "raw_position": pos_raw,
                 "input": device_elem.get("inp", "0"),
@@ -196,241 +181,62 @@ class NiceController:
         return status_map
 
     async def discover_devices(self) -> list[dict[str, str]]:
-        """Discover devices from Nice HTTP controller.
+        """Discover installed devices.
 
         Returns:
-            List of device dicts with 'id', 'name', 'module', 'adr', 'ept'
+            List of device dicts with 'id', 'name', 'module', 'adr', 'ept'.
         """
-        _LOGGER.debug("Starting device discovery")
+        root = await self._fetch_xml("cgi/devlst.xml")
 
-        if not self._http_session:
-            _LOGGER.debug("Initializing HTTP session")
-            await self._ensure_initialized()
+        devices = []
+        for device_elem in root.findall(".//device"):
+            if device_elem.get("installed", "0") != "1":
+                continue
+            device_id = self._parse_device_id(device_elem)
+            if device_id is None:
+                continue
 
-        # Use XML endpoint instead of HTML page - devices are loaded via AJAX
-        url = self._url("cgi/devlst.xml")
-        _LOGGER.debug("Device list XML URL: %s", url)
+            adr_dec, ept = device_id.split(",")
+            product_name = device_elem.get("productName", "Unknown")
+            devices.append(
+                {
+                    "id": device_id,
+                    "name": device_elem.get("desc") or product_name,
+                    "module": f"{product_name} ({adr_dec},{int(ept, 16)})",
+                    "adr": adr_dec,
+                    "ept": ept,
+                }
+            )
 
-        auth = self._auth()
-        if auth is None:
-            _LOGGER.warning("No authentication configured")
-
-        try:
-            async with self._http_session.get(url, auth=auth) as response:
-                _LOGGER.debug("HTTP response received (status: %d)", response.status)
-
-                # Check for authentication/redirect issues before processing
-                if response.status == 401:
-                    _LOGGER.error("Authentication failed (401 Unauthorized)")
-                    raise aiohttp.ClientResponseError(
-                        request_info=response.request_info,
-                        history=response.history,
-                        status=401,
-                        message="Authentication required"
-                    )
-
-                response.raise_for_status()
-                xml_content = await response.text()
-                _LOGGER.debug("Received %d bytes of XML", len(xml_content))
-
-                # Check if we got a login/error page instead of XML
-                xml_lower = xml_content.lower()
-                if any(keyword in xml_lower for keyword in ['<!doctype html', '<html', 'login', 'password']):
-                    _LOGGER.error("Received HTML/login page instead of XML. Check credentials.")
-                    raise aiohttp.ClientResponseError(
-                        request_info=response.request_info,
-                        history=response.history,
-                        status=401,
-                        message="Authentication failed - received HTML instead of XML"
-                    )
-
-                # Parse XML to extract device information
-                try:
-                    root = ET.fromstring(xml_content)
-                except ET.ParseError as err:
-                    _LOGGER.error("Failed to parse XML: %s", err)
-                    raise
-
-                devices = []
-
-                # Find all device elements
-                device_elements = root.findall('.//device')
-                _LOGGER.debug("Found %d device elements in XML", len(device_elements))
-
-                for idx, device_elem in enumerate(device_elements, 1):
-                    # Get device attributes
-                    installed = device_elem.get('installed', '0')
-                    mac = device_elem.get('mac', '')
-                    product_name = device_elem.get('productName', 'Unknown')
-                    adr = device_elem.get('adr', '0')
-                    ept = device_elem.get('ept', '0')
-                    desc = device_elem.get('desc', product_name)
-
-                    _LOGGER.debug("Device %d: mac=%s, name=%s, adr=%s, ept=%s, installed=%s",
-                                idx, mac, desc, adr, ept, installed)
-
-                    # Only process installed devices
-                    if installed != '1':
-                        _LOGGER.debug("  → Skipping (not installed)")
-                        continue
-
-                    # Convert hex to decimal for display in module name
-                    adr_dec = int(adr, 16)
-                    ept_dec = int(ept, 16)
-
-                    device = {
-                        "id": f"{adr_dec},{ept}",  # Use decimal adr, hex ept
-                        "name": desc if desc else product_name,
-                        "module": f"{product_name} ({adr_dec},{ept_dec})",
-                        "adr": str(adr_dec),  # Store as decimal string for command
-                        "ept": ept.upper(),  # Store as hex for command
-                    }
-                    devices.append(device)
-                    _LOGGER.info("  → Added device: %s (ID: %s)", device["name"], device["id"])
-
-                _LOGGER.info("Device discovery complete: found %d installed devices", len(devices))
-                return devices
-
-        except aiohttp.ClientError as err:
-            _LOGGER.error("HTTP error during device discovery: %s", err)
-            raise
-        except Exception as err:
-            _LOGGER.error("Unexpected error during device discovery: %s", err, exc_info=True)
-            raise
+        _LOGGER.debug("Discovered %d installed devices", len(devices))
+        return devices
 
     async def discover_groups(self) -> list[dict[str, Any]]:
-        """Discover groups from Nice HTTP controller.
+        """Discover enabled controller groups.
 
         Returns:
-            List of group dicts with 'num', 'name', 'enabled'
+            List of group dicts with 'num', 'name', 'enabled'.
         """
-        _LOGGER.debug("Starting group discovery")
+        root = await self._fetch_xml("cgi/grplst.xml")
 
-        if not self._http_session:
-            _LOGGER.debug("Initializing HTTP session")
-            await self._ensure_initialized()
+        groups = []
+        for group_elem in root.findall(".//group"):
+            if group_elem.get("enabled", "0") != "1":
+                continue
+            num = group_elem.get("num", "0")
+            groups.append(
+                {
+                    "num": num,
+                    "name": group_elem.get("desc") or f"Group {num}",
+                    "enabled": "1",
+                }
+            )
 
-        url = self._url("cgi/grplst.xml")
-        _LOGGER.debug("Group list XML URL: %s", url)
-
-        try:
-            async with self._http_session.get(url, auth=self._auth()) as response:
-                _LOGGER.debug("HTTP response received (status: %d)", response.status)
-                response.raise_for_status()
-                xml_content = await response.text()
-                _LOGGER.debug("Received %d bytes of XML", len(xml_content))
-
-                # Parse XML
-                try:
-                    root = ET.fromstring(xml_content)
-                except ET.ParseError as err:
-                    _LOGGER.error("Failed to parse group XML: %s", err)
-                    raise
-
-                groups = []
-
-                # Find all group elements
-                group_elements = root.findall('.//group')
-                _LOGGER.debug("Found %d group elements in XML", len(group_elements))
-
-                for idx, group_elem in enumerate(group_elements, 1):
-                    num = group_elem.get('num', '0')
-                    enabled = group_elem.get('enabled', '0')
-                    desc = group_elem.get('desc', f'Group {num}')
-
-                    _LOGGER.debug("Group %d: num=%s, desc=%s, enabled=%s",
-                                idx, num, desc, enabled)
-
-                    # Only process enabled groups
-                    if enabled != '1':
-                        _LOGGER.debug("  → Skipping (not enabled)")
-                        continue
-
-                    group = {
-                        "num": num,
-                        "name": desc,
-                        "enabled": enabled,
-                    }
-                    groups.append(group)
-                    _LOGGER.info("  → Added group: %s (num: %s)", group["name"], group["num"])
-
-                _LOGGER.info("Group discovery complete: found %d enabled groups", len(groups))
-                return groups
-
-        except aiohttp.ClientError as err:
-            _LOGGER.error("HTTP error during group discovery: %s", err)
-            raise
-        except Exception as err:
-            _LOGGER.error("Unexpected error during group discovery: %s", err, exc_info=True)
-            raise
-
-    async def send_group_command(self, group_num: str, command: str) -> None:
-        """Send a command to a group via HTTP.
-
-        Args:
-            group_num: Group number (e.g., "1", "2")
-            command: Command to send (open, close, stop)
-        """
-        await self._ensure_initialized()
-
-        _LOGGER.info("Sending group command: %s to group: %s", command, group_num)
-
-        if not self._http_session:
-            _LOGGER.error("HTTP session not initialized")
-            return
-
-        try:
-            # Map commands to Nice protocol data codes
-            cmd_data = {
-                "stop": "02000000",
-                "open": "03000000",
-                "close": "04000000",
-            }
-
-            dat = cmd_data.get(command)
-            if not dat:
-                _LOGGER.error("Unknown command: %s", command)
-                return
-
-            # Build URL: /cgi/grpcmd.xml?req=R&num=1&dat=03000000
-            url = self._url(f"cgi/grpcmd.xml?req=R&num={group_num}&dat={dat}")
-
-            _LOGGER.debug("Sending HTTP group request to: %s", url)
-            async with self._http_session.get(url, auth=self._auth()) as response:
-                response.raise_for_status()
-                xml_content = await response.text()
-
-                # Parse response to check result
-                try:
-                    root = ET.fromstring(xml_content)
-                    result = root.findtext('.//result', '0')
-                    if result == '0':
-                        _LOGGER.info(
-                            "Group command '%s' sent successfully to group %s",
-                            command, group_num
-                        )
-                    else:
-                        _LOGGER.warning(
-                            "Group command returned result: %s", result
-                        )
-                except ET.ParseError:
-                    _LOGGER.warning("Could not parse group command response")
-
-        except aiohttp.ClientError as err:
-            _LOGGER.error("HTTP request failed for group command '%s': %s", command, err)
-            raise
-        except Exception as err:
-            _LOGGER.error("Unexpected error sending group command '%s': %s", command, err)
-            raise
+        _LOGGER.debug("Discovered %d enabled groups", len(groups))
+        return groups
 
     async def cleanup(self) -> None:
-        """Clean up resources."""
-        if self._http_session:
-            try:
-                await self._http_session.close()
-            except Exception as err:
-                _LOGGER.error("Error closing HTTP session: %s", err)
-
-        self._initialized = False
-        self._http_session = None
-        _LOGGER.info("Nice controller cleaned up")
+        """Close the shared HTTP session."""
+        if self._http_session is not None:
+            await self._http_session.close()
+            self._http_session = None

@@ -138,33 +138,22 @@ Usage:
     python3 send_command.py <base_url> <username> <password> <device_id> <command>
 
 Examples:
-  # List all devices
-  python3 send_command.py http://192.168.10.235 aaron mypassword list
+  # List all devices (shows each device's ID)
+  python3 send_command.py http://192.168.1.100 admin mypassword list
 
-  # Open MBA 3 (device_id: 1,01)
-  python3 send_command.py http://192.168.10.235 aaron mypassword 1,01 open
+  # Open the blind with device ID 1,01
+  python3 send_command.py http://192.168.1.100 admin mypassword 1,01 open
 
-  # Close Kitchen 1 (device_id: 1,0B)
-  python3 send_command.py http://192.168.10.235 aaron mypassword 1,0B close
-
-  # Stop Office 1 (device_id: 1,0E)
-  python3 send_command.py http://192.168.10.235 aaron mypassword 1,0E stop
+  # Close the blind with device ID 1,0B
+  python3 send_command.py http://192.168.1.100 admin mypassword 1,0B close
 
 Available Commands:
   - open   : Opens the blind (moves up)
   - close  : Closes the blind (moves down)
   - stop   : Stops the blind movement
 
-Your Device IDs:
-  MBA 3       -> 1,01    |  Sunroom 2   -> 1,0A    |  Office 5    -> 1,11
-  MBR 1       -> 1,02    |  Kitchen 1   -> 1,0B    |  Office 6    -> 1,12
-  MBR 2       -> 1,03    |  Kitchen 2   -> 1,0C    |  Office 7    -> 1,13
-  MBR 4       -> 1,04    |  Office 2    -> 1,0D    |  Office 8    -> 1,14
-  Sunroom 1   -> 1,05    |  Office 1    -> 1,0E    |  Office 9    -> 1,15
-  MBA 1       -> 1,06    |  Office 3    -> 1,0F    |  Office 10   -> 1,16
-  Sunroom 3   -> 1,07    |  Office 4    -> 1,10    |  Office 11   -> 1,17
-  Sunroom 4   -> 1,08    |                          |  Office 12   -> 1,18
-  Sunroom 5   -> 1,09    |                          |  Living Room -> 1,19
+Device IDs use the format "adr,ept" (decimal address, hex endpoint).
+Run the `list` command to discover the IDs on your controller.
 """)
 
 

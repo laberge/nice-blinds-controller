@@ -22,7 +22,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from . import DOMAIN
-from .nice_protocol import NiceController
+from .nice_protocol import STATUS_CLOSING, STATUS_OPENING, NiceController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,8 +127,8 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
         coordinator: NiceStatusCoordinator,
         device_id: str,
         move_time: int = 30,
-        entry_id: str = None,
-        device_info: dict = None,
+        entry_id: str | None = None,
+        device_info: dict | None = None,
     ) -> None:
         """Initialize the blind."""
         super().__init__(coordinator)
@@ -139,7 +139,6 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
         self._move_time = move_time
         self._attr_should_poll = False
 
-        # Create device info
         if device_info:
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, f"{entry_id}_{device_id}")},
@@ -167,24 +166,19 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
         """Return current position of cover (0 closed, 100 open)."""
         if not (status := self._status):
             return None
-        position = status.get("position")
-        return position if position is not None else None
+        return status.get("position")
 
     @property
     def is_opening(self) -> bool:
         """Return if the cover is opening."""
         status = self._status
-        if not status:
-            return False
-        return status.get("status_code") == "02"
+        return status is not None and status.get("status_code") == STATUS_OPENING
 
     @property
     def is_closing(self) -> bool:
         """Return if the cover is closing."""
         status = self._status
-        if not status:
-            return False
-        return status.get("status_code") == "03"
+        return status is not None and status.get("status_code") == STATUS_CLOSING
 
     @property
     def is_closed(self) -> bool | None:
@@ -196,10 +190,9 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""
-        _LOGGER.info("Opening blinds: %s", self.name)
+        _LOGGER.debug("Opening blinds: %s", self.name)
 
         try:
-            # Send Nice protocol open command
             await self._controller.send_command(self._device_id, "open")
             await self.coordinator.async_request_refresh()
         except Exception as err:
@@ -207,10 +200,9 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the cover."""
-        _LOGGER.info("Closing blinds: %s", self.name)
+        _LOGGER.debug("Closing blinds: %s", self.name)
 
         try:
-            # Send Nice protocol close command
             await self._controller.send_command(self._device_id, "close")
             await self.coordinator.async_request_refresh()
         except Exception as err:
@@ -218,10 +210,9 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop the cover."""
-        _LOGGER.info("Stopping blinds: %s", self.name)
+        _LOGGER.debug("Stopping blinds: %s", self.name)
 
         try:
-            # Send Nice protocol stop command
             await self._controller.send_command(self._device_id, "stop")
         except Exception as err:
             _LOGGER.error("Error stopping blinds %s: %s", self.name, err)
@@ -231,7 +222,7 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Move the cover to a specific position."""
         position = kwargs.get("position", 0)
-        _LOGGER.info("Setting blinds %s to position: %s", self.name, position)
+        _LOGGER.debug("Setting blinds %s to position: %s", self.name, position)
 
         current_pos = self.current_cover_position or 0
 
@@ -262,6 +253,8 @@ class BlindsGroupCover(
     """Representation of a Nice controller group."""
 
     _attr_device_class = CoverDeviceClass.BLIND
+    # Groups execute pre-programmed controller actions and report no state back.
+    _attr_assumed_state = True
     _attr_supported_features = (
         CoverEntityFeature.OPEN
         | CoverEntityFeature.CLOSE
@@ -275,7 +268,7 @@ class BlindsGroupCover(
         group_num: str,
         controller: NiceController,
         coordinator: NiceStatusCoordinator,
-        entry_id: str = None,
+        entry_id: str | None = None,
     ) -> None:
         """Initialize the blind group using controller's native groups."""
         super().__init__(coordinator)
@@ -283,9 +276,8 @@ class BlindsGroupCover(
         self._attr_unique_id = unique_id
         self._group_num = group_num
         self._controller = controller
-        self._attr_should_poll = False  # Groups don't have position feedback
+        self._attr_should_poll = False
 
-        # Create device info for the group
         if entry_id:
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, f"{entry_id}_group_{group_num}")},
@@ -322,7 +314,7 @@ class BlindsGroupCover(
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open all covers in the group using controller's native group command."""
-        _LOGGER.info("Opening controller group: %s (num: %s)", self.name, self._group_num)
+        _LOGGER.debug("Opening controller group: %s (num: %s)", self.name, self._group_num)
         try:
             await self._controller.send_group_command(self._group_num, "open")
             await self.coordinator.async_request_refresh()
@@ -332,7 +324,7 @@ class BlindsGroupCover(
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close all covers in the group using controller's native group command."""
-        _LOGGER.info("Closing controller group: %s (num: %s)", self.name, self._group_num)
+        _LOGGER.debug("Closing controller group: %s (num: %s)", self.name, self._group_num)
         try:
             await self._controller.send_group_command(self._group_num, "close")
             await self.coordinator.async_request_refresh()
@@ -342,7 +334,7 @@ class BlindsGroupCover(
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop all covers in the group using controller's native group command."""
-        _LOGGER.info("Stopping controller group: %s (num: %s)", self.name, self._group_num)
+        _LOGGER.debug("Stopping controller group: %s (num: %s)", self.name, self._group_num)
         try:
             await self._controller.send_group_command(self._group_num, "stop")
             await self.coordinator.async_request_refresh()
