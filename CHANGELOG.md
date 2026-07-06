@@ -5,6 +5,14 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.5] - 2026-07-06
+
+### Added
+- **Integration**: Brand icons now ship inside the integration (`brand/icon.png`, `brand/icon@2x.png`) using Home Assistant 2026.3's local brand image support — the home-assistant/brands repo no longer accepts custom integration icons.
+
+### Removed
+- **Integration**: Removed unused `icon.png`/`logo.png` from the component root (Home Assistant never loaded them from there).
+
 ## [1.9.4] - 2026-07-03
 
 ### Fixed
