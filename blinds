@@ -19,9 +19,9 @@ async def get_devices(base_url: str, username: str, password: str):
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        auth = aiohttp.BasicAuth(username, password) if username and password else None
+        headers = {'Authorization': aiohttp.encode_basic_auth(username, password)} if username and password else None
 
-        async with session.get(url, auth=auth) as response:
+        async with session.get(url, headers=headers) as response:
             response.raise_for_status()
             xml_content = await response.text()
 
@@ -55,9 +55,9 @@ async def get_device_status(base_url: str, username: str, password: str, device_
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        auth = aiohttp.BasicAuth(username, password) if username and password else None
+        headers = {'Authorization': aiohttp.encode_basic_auth(username, password)} if username and password else None
 
-        async with session.get(url, auth=auth) as response:
+        async with session.get(url, headers=headers) as response:
             response.raise_for_status()
             xml_content = await response.text()
 
@@ -118,9 +118,9 @@ async def get_controller_groups(config_url: str, config_user: str, config_pass: 
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        auth = aiohttp.BasicAuth(config_user, config_pass) if config_user and config_pass else None
+        headers = {'Authorization': aiohttp.encode_basic_auth(config_user, config_pass)} if config_user and config_pass else None
 
-        async with session.get(url, auth=auth) as response:
+        async with session.get(url, headers=headers) as response:
             response.raise_for_status()
             xml_content = await response.text()
 
@@ -158,9 +158,9 @@ async def send_command(base_url: str, username: str, password: str, device_id: s
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        auth = aiohttp.BasicAuth(username, password) if username and password else None
+        headers = {'Authorization': aiohttp.encode_basic_auth(username, password)} if username and password else None
 
-        async with session.get(url, auth=auth) as response:
+        async with session.get(url, headers=headers) as response:
             response.raise_for_status()
             return True
 
@@ -231,10 +231,10 @@ async def send_group_command(group_name: str, command: str, config_url: str, con
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        auth = aiohttp.BasicAuth(config_user, config_pass) if config_user and config_pass else None
+        headers = {'Authorization': aiohttp.encode_basic_auth(config_user, config_pass)} if config_user and config_pass else None
 
         try:
-            async with session.get(url, auth=auth) as response:
+            async with session.get(url, headers=headers) as response:
                 response.raise_for_status()
                 xml_content = await response.text()
 
