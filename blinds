@@ -12,7 +12,41 @@ CONTROLLER_URL = os.getenv("BLINDS_URL", "")  # e.g. http://192.168.1.100
 USERNAME = os.getenv("BLINDS_USER", "admin")
 PASSWORD = os.getenv("BLINDS_PASS", "")
 
+# --- Transient-connection retry ------------------------------------------------
+# The embedded controller occasionally fails to answer a cold TCP connect for a
+# beat (e.g. while it's busy driving the RF to the blinds), which aiohttp raises
+# as ClientConnectorError/ClientOSError ("No route to host"). These are
+# recoverable on a quick retry, so each request helper below is wrapped in a few
+# attempts with a short backoff. HTTP errors (raise_for_status) are NOT retried.
+CONNECT_RETRIES = 3
+RETRY_BACKOFF = 0.4  # seconds, multiplied by the attempt number
 
+
+def retry_on_connect(func):
+    """Retry an async request helper on transient connection errors."""
+    async def wrapper(*args, **kwargs):
+        for attempt in range(1, CONNECT_RETRIES + 1):
+            try:
+                return await func(*args, **kwargs)
+            except (aiohttp.ClientConnectorError, aiohttp.ClientOSError):
+                if attempt == CONNECT_RETRIES:
+                    raise
+                await asyncio.sleep(RETRY_BACKOFF * attempt)
+    return wrapper
+
+
+@retry_on_connect
+async def _request_text(url: str, username: str, password: str) -> str:
+    """GET a URL with optional basic auth and return the response text (retried)."""
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        headers = {'Authorization': aiohttp.encode_basic_auth(username, password)} if username and password else None
+        async with session.get(url, headers=headers) as response:
+            response.raise_for_status()
+            return await response.text()
+
+
+@retry_on_connect
 async def get_devices(base_url: str, username: str, password: str):
     """Get all devices from the controller."""
     url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
@@ -49,6 +83,7 @@ async def get_devices(base_url: str, username: str, password: str):
             return devices
 
 
+@retry_on_connect
 async def get_device_status(base_url: str, username: str, password: str, device_name: str = None):
     """Get status of devices."""
     url = f"{base_url.rstrip('/')}/cgi/devlst.xml"
@@ -112,6 +147,7 @@ async def get_device_status(base_url: str, username: str, password: str, device_
             return devices
 
 
+@retry_on_connect
 async def get_controller_groups(config_url: str, config_user: str, config_pass: str):
     """Get groups from the controller."""
     url = f"{config_url.rstrip('/')}/cgi/grplst.xml"
@@ -145,6 +181,7 @@ async def get_controller_groups(config_url: str, config_user: str, config_pass: 
             return groups
 
 
+@retry_on_connect
 async def send_command(base_url: str, username: str, password: str, device_id: str, command: str):
     """Send a command to a Nice blind."""
     parts = device_id.split(",")
@@ -229,34 +266,28 @@ async def send_group_command(group_name: str, command: str, config_url: str, con
     # Send group command using controller's native group API
     url = f"{config_url.rstrip('/')}/cgi/grpcmd.xml?req=R&num={group_num}&dat={dat}"
 
-    timeout = aiohttp.ClientTimeout(total=10)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        headers = {'Authorization': aiohttp.encode_basic_auth(config_user, config_pass)} if config_user and config_pass else None
+    try:
+        xml_content = await _request_text(url, config_user, config_pass)
 
-        try:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                xml_content = await response.text()
+        # Parse response
+        root = ET.fromstring(xml_content)
+        result = root.findtext('.//result', '0')
 
-                # Parse response
-                root = ET.fromstring(xml_content)
-                result = root.findtext('.//result', '0')
-
-                if result == '0':
-                    print(f"  ✓ Group command sent to controller")
-                    print(f"  ✓ Devices in group are executing")
-                    print(f"\n  Run './blinds status' to verify results")
-                    print(f"{'='*60}\n")
-                    return True
-                else:
-                    print(f"  ✗ Controller returned result: {result}")
-                    print(f"{'='*60}\n")
-                    return False
-
-        except Exception as e:
-            print(f"  ✗ Error: {e}")
+        if result == '0':
+            print(f"  ✓ Group command sent to controller")
+            print(f"  ✓ Devices in group are executing")
+            print(f"\n  Run './blinds status' to verify results")
+            print(f"{'='*60}\n")
+            return True
+        else:
+            print(f"  ✗ Controller returned result: {result}")
             print(f"{'='*60}\n")
             return False
+
+    except Exception as e:
+        print(f"  ✗ Error: {e}")
+        print(f"{'='*60}\n")
+        return False
 
 
 async def main_async(command: str, device_name: str, config_url: str, config_user: str, config_pass: str):
