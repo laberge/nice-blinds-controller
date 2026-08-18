@@ -20,15 +20,31 @@ PASSWORD = os.getenv("BLINDS_PASS", "")
 # attempts with a short backoff. HTTP errors (raise_for_status) are NOT retried.
 CONNECT_RETRIES = 3
 RETRY_BACKOFF = 0.4  # seconds, multiplied by the attempt number
+DIAG_LOG = os.path.expanduser("~/.blinds-cli.log")
+
+
+def _diag(msg: str):
+    import datetime
+    with open(DIAG_LOG, "a") as f:
+        f.write(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S.%f} {msg}\n")
 
 
 def retry_on_connect(func):
     """Retry an async request helper on transient connection errors."""
     async def wrapper(*args, **kwargs):
+        import time
         for attempt in range(1, CONNECT_RETRIES + 1):
+            t0 = time.monotonic()
             try:
-                return await func(*args, **kwargs)
-            except (aiohttp.ClientConnectorError, aiohttp.ClientOSError):
+                result = await func(*args, **kwargs)
+                if attempt > 1:
+                    _diag(f"{func.__name__} recovered on attempt {attempt}")
+                return result
+            except (aiohttp.ClientConnectorError, aiohttp.ClientOSError) as e:
+                # Attempt duration is the diagnostic: ~1ms = OS blocked the packet
+                # locally; ~3s = ARP timed out (controller off the network).
+                _diag(f"{func.__name__} attempt {attempt}/{CONNECT_RETRIES} failed "
+                      f"after {(time.monotonic() - t0) * 1000:.0f}ms: {e!r}")
                 if attempt == CONNECT_RETRIES:
                     raise
                 await asyncio.sleep(RETRY_BACKOFF * attempt)
