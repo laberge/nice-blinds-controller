@@ -18,7 +18,7 @@ There is no build step. The integration is tested with pytest; HACS structure va
 
 ## Tests
 
-`tests/` mirrors the three integration layers. `conftest.py` holds the `enable_custom_integrations` fixture and sample controller XML. The protocol layer is tested against mocked HTTP via `aioresponses` (no HA needed); `cover` and `config_flow` use the `hass` fixture. When changing protocol endpoints, command codes, or the `adr`/`ept` ID convention, update `test_nice_protocol.py` in lockstep.
+`tests/` mirrors the three integration layers. `conftest.py` holds the `enable_custom_integrations` fixture and sample controller XML. The protocol layer is tested against mocked HTTP via `aioresponses` (no HA needed); `cover` and `config_flow` use the `hass` fixture. When changing protocol endpoints, command codes, or the `adr`/`ept` ID convention, update `test_nice_protocol.py` in lockstep. `test_blinds_cli.py` covers the standalone `blinds` CLI (loaded from the extensionless script): parsing, command URLs, the connect-retry/diag log, argv handling, and a parity test that the CLI and `NiceController` derive identical device IDs.
 - **Run the CLI**: `./blinds <open|close|stop|status|list|list-groups> ["<device name>"]` and `./blinds <open|close|stop>-group "<group>"`. Configure via env vars `BLINDS_URL`, `BLINDS_USER`, `BLINDS_PASS` (see `BLINDS_CLI_README.md`).
 - **Diagnostics**: `./test_controller.py` probes the controller; `./send_command.py` sends raw commands by device ID.
 

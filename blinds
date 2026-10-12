@@ -3,6 +3,7 @@
 
 import asyncio
 import aiohttp
+import base64
 import sys
 import os
 import xml.etree.ElementTree as ET
@@ -27,6 +28,13 @@ def _diag(msg: str):
     import datetime
     with open(DIAG_LOG, "a") as f:
         f.write(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S.%f} {msg}\n")
+
+
+def _auth_headers(username: str, password: str):
+    """Basic-auth header, or None without credentials (works on any aiohttp)."""
+    if not (username and password):
+        return None
+    return {'Authorization': 'Basic ' + base64.b64encode(f"{username}:{password}".encode()).decode()}
 
 
 def retry_on_connect(func):
@@ -56,7 +64,7 @@ async def _request_text(url: str, username: str, password: str) -> str:
     """GET a URL with optional basic auth and return the response text (retried)."""
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        headers = {'Authorization': aiohttp.encode_basic_auth(username, password)} if username and password else None
+        headers = _auth_headers(username, password)
         async with session.get(url, headers=headers) as response:
             response.raise_for_status()
             return await response.text()
@@ -69,7 +77,7 @@ async def get_devices(base_url: str, username: str, password: str):
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        headers = {'Authorization': aiohttp.encode_basic_auth(username, password)} if username and password else None
+        headers = _auth_headers(username, password)
 
         async with session.get(url, headers=headers) as response:
             response.raise_for_status()
@@ -106,7 +114,7 @@ async def get_device_status(base_url: str, username: str, password: str, device_
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        headers = {'Authorization': aiohttp.encode_basic_auth(username, password)} if username and password else None
+        headers = _auth_headers(username, password)
 
         async with session.get(url, headers=headers) as response:
             response.raise_for_status()
@@ -170,7 +178,7 @@ async def get_controller_groups(config_url: str, config_user: str, config_pass: 
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        headers = {'Authorization': aiohttp.encode_basic_auth(config_user, config_pass)} if config_user and config_pass else None
+        headers = _auth_headers(config_user, config_pass)
 
         async with session.get(url, headers=headers) as response:
             response.raise_for_status()
@@ -211,7 +219,7 @@ async def send_command(base_url: str, username: str, password: str, device_id: s
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        headers = {'Authorization': aiohttp.encode_basic_auth(username, password)} if username and password else None
+        headers = _auth_headers(username, password)
 
         async with session.get(url, headers=headers) as response:
             response.raise_for_status()
