@@ -5,6 +5,16 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.6] - 2026-10-12
+
+### Fixed
+- **CLI**: `blinds` retries transient connection errors ("No route to host") up to 3 times with a short backoff instead of failing on the first blip; HTTP errors are not retried.
+- **CLI**: Basic auth no longer uses aiohttp's deprecated `BasicAuth`, and works on any aiohttp version (the previous `encode_basic_auth` replacement required aiohttp 3.14+).
+
+### Added
+- **CLI**: Per-attempt connection-failure diagnostics (timing + errno) are logged to `~/.blinds-cli.log`.
+- **Tests**: `test_blinds_cli.py` covers the standalone CLI — parsing, command/group URLs, retry behavior, argv handling, and parity with the integration's device-ID logic.
+
 ## [1.9.5] - 2026-07-06
 
 ### Added
