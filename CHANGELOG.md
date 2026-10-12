@@ -5,6 +5,11 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.7] - 2026-10-12
+
+### Changed
+- **CI**: Updated `actions/checkout` and `actions/setup-python` to v7 (Node 24), clearing GitHub's Node 20 deprecation warnings.
+
 ## [1.9.6] - 2026-10-12
 
 ### Fixed
