@@ -72,11 +72,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "timeout": user_input.get("http_timeout", 10),
                 }
 
+                controller = NiceController(http_config=self._http_config)
                 try:
-                    controller = NiceController(http_config=self._http_config)
-                    self._discovered_devices = await controller.discover_devices()
+                    try:
+                        self._discovered_devices = await controller.discover_devices()
+                    finally:
+                        await controller.cleanup()
                     _LOGGER.debug("Discovered %d devices from controller", len(self._discovered_devices))
-                    await controller.cleanup()
 
                     if not self._discovered_devices:
                         _LOGGER.warning("No devices found on controller")
@@ -132,14 +134,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._move_time = move_time
 
             # Discover groups from controller
+            controller = NiceController(http_config=self._http_config)
             try:
-                controller = NiceController(http_config=self._http_config)
                 self._groups = await controller.discover_groups()
-                await controller.cleanup()
                 _LOGGER.debug("Discovered %d groups from controller", len(self._groups))
             except Exception as err:
                 _LOGGER.warning("Could not discover groups: %s", err)
                 self._groups = []
+            finally:
+                await controller.cleanup()
 
             # Go to review groups step
             return await self.async_step_review_groups()
@@ -278,16 +281,13 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
             try:
                 controller = NiceController(http_config=http_config)
-
-                # Discover devices
-                new_devices = await controller.discover_devices()
+                try:
+                    new_devices = await controller.discover_devices()
+                    new_groups = await controller.discover_groups()
+                finally:
+                    await controller.cleanup()
                 _LOGGER.info("Refreshed devices: found %d devices", len(new_devices))
-
-                # Discover groups
-                new_groups = await controller.discover_groups()
                 _LOGGER.info("Refreshed groups: found %d groups", len(new_groups))
-
-                await controller.cleanup()
 
                 # Update config entry
                 new_data = {**self.config_entry.data}

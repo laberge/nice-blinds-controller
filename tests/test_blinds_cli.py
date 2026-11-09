@@ -10,8 +10,8 @@ from unittest.mock import MagicMock
 
 import aiohttp
 import pytest
-from aioresponses import aioresponses
-from aioresponses.core import normalize_url
+from .http_mock import MockHTTP
+from .http_mock import normalize_url
 
 from custom_components.blinds_control.nice_protocol import NiceController
 
@@ -61,7 +61,7 @@ def test_auth_headers(cli):
 
 
 async def test_requests_send_basic_auth(cli, device_list_xml):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, status=200, body=device_list_xml)
         await cli.get_devices(BASE_URL, USER, PASS)
         (call,) = next(iter(m.requests.values()))
@@ -71,7 +71,7 @@ async def test_requests_send_basic_auth(cli, device_list_xml):
 # --- parsing --------------------------------------------------------------------
 
 async def test_get_devices_ids_and_names(cli, device_list_xml):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, status=200, body=device_list_xml)
         devices = await cli.get_devices(BASE_URL + "/", USER, PASS)
 
@@ -82,7 +82,7 @@ async def test_get_devices_ids_and_names(cli, device_list_xml):
 async def test_cli_device_ids_match_integration(cli, http_config, device_list_xml):
     """The CLI duplicates the integration's ID logic; they must never drift."""
     controller = NiceController(http_config)
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, status=200, body=device_list_xml)
         m.get(DEVLST, status=200, body=device_list_xml)
         cli_ids = set((await cli.get_devices(BASE_URL, USER, PASS)).values())
@@ -92,7 +92,7 @@ async def test_cli_device_ids_match_integration(cli, http_config, device_list_xm
 
 
 async def test_get_device_status(cli, device_list_xml):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, status=200, body=device_list_xml)
         devices = await cli.get_device_status(BASE_URL, USER, PASS)
 
@@ -107,14 +107,14 @@ async def test_get_device_status(cli, device_list_xml):
 
 
 async def test_get_device_status_filters_by_name(cli, device_list_xml):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, status=200, body=device_list_xml)
         devices = await cli.get_device_status(BASE_URL, USER, PASS, "  OFFICE 3 ")
     assert [d["id"] for d in devices] == ["1,0F"]
 
 
 async def test_get_controller_groups_skips_disabled(cli, group_list_xml):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(GRPLST, status=200, body=group_list_xml)
         groups = await cli.get_controller_groups(BASE_URL, USER, PASS)
     assert groups == {
@@ -128,7 +128,7 @@ async def test_get_controller_groups_skips_disabled(cli, group_list_xml):
 @pytest.mark.parametrize("command, code", [("stop", "02"), ("open", "03"), ("close", "04")])
 async def test_send_command_codes(cli, command, code):
     url = f"{BASE_URL}/cgi/devcmd.xml?adr=1&ept=0F&cmd={code}"
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(url, status=200, body="<ok/>")
         assert await cli.send_command(BASE_URL, USER, PASS, "1,0F", command) is True
         assert requested_urls(m) == [str(normalize_url(url))]
@@ -136,7 +136,7 @@ async def test_send_command_codes(cli, command, code):
 
 async def test_main_async_resolves_name_and_sends(cli, device_list_xml, capsys):
     cmd_url = f"{BASE_URL}/cgi/devcmd.xml?adr=10&ept=05&cmd=04"
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, status=200, body=device_list_xml)
         m.get(cmd_url, status=200, body="<ok/>")
         assert await cli.main_async("close", "sunroom 1", BASE_URL, USER, PASS) is True
@@ -145,7 +145,7 @@ async def test_main_async_resolves_name_and_sends(cli, device_list_xml, capsys):
 
 
 async def test_main_async_unknown_device(cli, device_list_xml, capsys):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, status=200, body=device_list_xml)
         assert await cli.main_async("open", "Garage", BASE_URL, USER, PASS) is False
         assert not any("devcmd" in u for u in requested_urls(m))
@@ -155,7 +155,7 @@ async def test_main_async_unknown_device(cli, device_list_xml, capsys):
 
 
 async def test_main_async_auth_failure(cli, capsys):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, status=401)
         assert await cli.main_async("open", "Office 3", BASE_URL, USER, PASS) is False
     assert "Authentication failed" in capsys.readouterr().out
@@ -166,7 +166,7 @@ async def test_main_async_auth_failure(cli, capsys):
 @pytest.mark.parametrize("command, dat", [("stop", "02000000"), ("open", "03000000"), ("close", "04000000")])
 async def test_send_group_command(cli, group_list_xml, command, dat):
     url = f"{BASE_URL}/cgi/grpcmd.xml?req=R&num=3&dat={dat}"
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(GRPLST, status=200, body=group_list_xml)
         m.get(url, status=200, body="<nice><result>0</result></nice>")
         assert await cli.send_group_command("SUNROOM", command, BASE_URL, USER, PASS) is True
@@ -174,7 +174,7 @@ async def test_send_group_command(cli, group_list_xml, command, dat):
 
 
 async def test_send_group_command_controller_rejects(cli, group_list_xml):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(GRPLST, status=200, body=group_list_xml)
         m.get(f"{BASE_URL}/cgi/grpcmd.xml?req=R&num=1&dat=03000000", status=200,
               body="<nice><result>1</result></nice>")
@@ -182,7 +182,7 @@ async def test_send_group_command_controller_rejects(cli, group_list_xml):
 
 
 async def test_send_group_command_unknown_or_disabled_group(cli, group_list_xml, capsys):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(GRPLST, status=200, body=group_list_xml)
         assert await cli.send_group_command("Disabled", "open", BASE_URL, USER, PASS) is False
         assert not any("grpcmd" in u for u in requested_urls(m))
@@ -192,7 +192,7 @@ async def test_send_group_command_unknown_or_disabled_group(cli, group_list_xml,
 # --- transient-connection retry -------------------------------------------------
 
 async def test_retry_recovers_from_transient_no_route(cli, device_list_xml):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, exception=no_route_error())
         m.get(DEVLST, exception=no_route_error())
         m.get(DEVLST, status=200, body=device_list_xml)
@@ -206,7 +206,7 @@ async def test_retry_recovers_from_transient_no_route(cli, device_list_xml):
 
 
 async def test_retry_gives_up_after_three_attempts(cli):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         for _ in range(4):
             m.get(DEVLST, exception=no_route_error())
         with pytest.raises(aiohttp.ClientConnectorError):
@@ -217,7 +217,7 @@ async def test_retry_gives_up_after_three_attempts(cli):
 
 
 async def test_http_errors_are_not_retried(cli):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(DEVLST, status=500)
         m.get(DEVLST, status=200, body="<devlst/>")
         with pytest.raises(aiohttp.ClientResponseError):
@@ -228,7 +228,7 @@ async def test_http_errors_are_not_retried(cli):
 
 async def test_group_command_retries_both_requests(cli, group_list_xml):
     grpcmd = f"{BASE_URL}/cgi/grpcmd.xml?req=R&num=1&dat=02000000"
-    with aioresponses() as m:
+    with MockHTTP() as m:
         m.get(GRPLST, exception=no_route_error())
         m.get(GRPLST, status=200, body=group_list_xml)
         m.get(grpcmd, exception=no_route_error())
@@ -237,7 +237,7 @@ async def test_group_command_retries_both_requests(cli, group_list_xml):
 
 
 async def test_unreachable_controller_reports_cleanly(cli, capsys):
-    with aioresponses() as m:
+    with MockHTTP() as m:
         for _ in range(3):
             m.get(DEVLST, exception=no_route_error())
         assert await cli.main_async("open", "Office 3", BASE_URL, USER, PASS) is False

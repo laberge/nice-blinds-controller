@@ -10,7 +10,7 @@ There is no build step. The integration is tested with pytest; HACS structure va
 
 ## Commands
 
-- **Set up test env** (one time): `python3 -m venv .venv && .venv/bin/pip install -r requirements-test.txt`. This pulls a full Home Assistant + `pytest-homeassistant-custom-component`.
+- **Set up test env** (one time): `python3.14 -m venv .venv && .venv/bin/pip install -r requirements-test.txt`. This pulls a full Home Assistant + `pytest-homeassistant-custom-component`. Python 3.14 is required: on 3.13 pip resolves HA 2026.2, older than the integration's 2026.9 minimum.
 - **Run tests**: `.venv/bin/pytest` (config in `pyproject.toml`; `asyncio_mode=auto`). Single file: `.venv/bin/pytest tests/test_nice_protocol.py`; single test: `.venv/bin/pytest tests/test_cover.py::test_cover_position_and_states`.
 - **Pre-commit** (runs tests + hygiene before every commit): `.venv/bin/pre-commit install` once; then it runs automatically. Manual: `.venv/bin/pre-commit run --all-files`. The `pytest` hook invokes `.venv/bin/pytest`, so the venv must exist.
 - **Lint/validate**: CI (`.github/workflows/validate.yml`) runs both HACS validation (`hacs/action@main`) and the pytest job.
@@ -18,7 +18,7 @@ There is no build step. The integration is tested with pytest; HACS structure va
 
 ## Tests
 
-`tests/` mirrors the three integration layers. `conftest.py` holds the `enable_custom_integrations` fixture and sample controller XML. The protocol layer is tested against mocked HTTP via `aioresponses` (no HA needed); `cover` and `config_flow` use the `hass` fixture. When changing protocol endpoints, command codes, or the `adr`/`ept` ID convention, update `test_nice_protocol.py` in lockstep. `test_blinds_cli.py` covers the standalone `blinds` CLI (loaded from the extensionless script): parsing, command URLs, the connect-retry/diag log, argv handling, and a parity test that the CLI and `NiceController` derive identical device IDs.
+`tests/` mirrors the three integration layers. `conftest.py` holds the `enable_custom_integrations` fixture and sample controller XML. The protocol layer is tested against mocked HTTP via `tests/http_mock.py` (`MockHTTP`, an aioresponses-style patch of `ClientSession._request`; aioresponses itself doesn't support aiohttp 3.14) (no HA needed); `cover` and `config_flow` use the `hass` fixture. When changing protocol endpoints, command codes, or the `adr`/`ept` ID convention, update `test_nice_protocol.py` in lockstep. `test_blinds_cli.py` covers the standalone `blinds` CLI (loaded from the extensionless script): parsing, command URLs, the connect-retry/diag log, argv handling, and a parity test that the CLI and `NiceController` derive identical device IDs.
 - **Run the CLI**: `./blinds <open|close|stop|status|list|list-groups> ["<device name>"]` and `./blinds <open|close|stop>-group "<group>"`. Configure via env vars `BLINDS_URL`, `BLINDS_USER`, `BLINDS_PASS` (see `BLINDS_CLI_README.md`).
 - **Diagnostics**: `./test_controller.py` probes the controller; `./send_command.py` sends raw commands by device ID.
 

@@ -1,8 +1,6 @@
 """Tests for the cover entities and status coordinator."""
 from unittest.mock import AsyncMock
 
-from awesomeversion import AwesomeVersion
-from homeassistant.const import __version__ as HA_VERSION
 import pytest
 
 from custom_components.blinds_control.cover import (
@@ -12,10 +10,22 @@ from custom_components.blinds_control.cover import (
 )
 
 
+_coordinators: list[NiceStatusCoordinator] = []
+
+
+@pytest.fixture(autouse=True)
+async def shutdown_coordinators(hass):
+    """Cancel each coordinator's refresh debouncer, as HA does on unload."""
+    yield
+    while _coordinators:
+        await _coordinators.pop().async_shutdown()
+
+
 def make_coordinator(hass, controller=None, data=None, success=True):
     controller = controller or AsyncMock()
     controller.get_all_device_status.return_value = data or {}
     coordinator = NiceStatusCoordinator(hass, controller)
+    _coordinators.append(coordinator)
     coordinator.data = data or {}
     coordinator.last_update_success = success
     return coordinator, controller
@@ -125,10 +135,6 @@ async def test_group_cover_commands(hass):
     controller.send_group_command.assert_awaited_with("1", "stop")
 
 
-@pytest.mark.skipif(
-    AwesomeVersion(HA_VERSION) < AwesomeVersion("2026.9.0"),
-    reason="DeviceInfo.via_device_id needs HA 2026.9+; the Python 3.13 test env caps HA at 2026.2",
-)
 async def test_setup_adds_every_entity_linked_to_controller(hass, caplog):
     """Every configured device and group must be added (HA 2026.9+ rejects via_device)."""
     from unittest.mock import patch

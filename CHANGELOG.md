@@ -5,6 +5,14 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.9] - 2026-11-09
+
+### Fixed
+- **Config/options flow leaked an HTTP session** whenever discovery failed (wrong password, controller unreachable). The controller session is now always closed.
+
+### Changed
+- **Tests/CI**: Python 3.14 and Home Assistant 2026.10 (3.13 capped HA at 2026.2, below the 2026.9 minimum). aioresponses, which doesn't support aiohttp 3.14, is replaced by a small in-repo mock (`tests/http_mock.py`). The `via_device_id` regression test now always runs.
+
 ## [1.9.8] - 2026-11-09
 
 ### Fixed
