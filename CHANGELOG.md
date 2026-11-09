@@ -5,6 +5,11 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.12] - 2026-11-09
+
+### Changed
+- **Release packaging**: Each GitHub release now carries a `blinds_control.zip` (built by `.github/workflows/release.yml`), and `hacs.json` sets `zip_release` so HACS installs from it. GitHub counts asset downloads, which gives a rough install count. Zips were backfilled onto every earlier release. No code changes.
+
 ## [1.9.11] - 2026-11-09
 
 ### Changed

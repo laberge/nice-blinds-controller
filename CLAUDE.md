@@ -24,7 +24,7 @@ There is no build step. The integration is tested with pytest; HACS structure va
 
 ## Releasing
 
-Version is the single source of truth in `custom_components/blinds_control/manifest.json` (`version` field). Bump it, add a `CHANGELOG.md` entry, then commit. HACS picks up GitHub releases/tags. `manifest.json` `requirements` must stay empty — pinning `aiohttp` there breaks HACS installs because HA already provides it (see CHANGELOG 1.9.2).
+Version is the single source of truth in `custom_components/blinds_control/manifest.json` (`version` field). Bump it, add a `CHANGELOG.md` entry, then commit. HACS picks up GitHub releases/tags and installs from the release's `blinds_control.zip` (`zip_release` in `hacs.json`), which `.github/workflows/release.yml` attaches when a release is published; a release without it can't be installed. `manifest.json` `requirements` must stay empty — pinning `aiohttp` there breaks HACS installs because HA already provides it (see CHANGELOG 1.9.2).
 
 ## Architecture
 

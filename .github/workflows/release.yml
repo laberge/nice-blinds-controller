@@ -1,0 +1,20 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v7"
+      - name: Build blinds_control.zip
+        run: cd custom_components/blinds_control && zip -r "$GITHUB_WORKSPACE/blinds_control.zip" . -x '__pycache__/*'
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" blinds_control.zip --clobber
