@@ -1,12 +1,12 @@
 """Tests for the config and options flows."""
 import aiohttp
-from .http_mock import MockHTTP
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.blinds_control import DOMAIN
 
 from .conftest import BASE_URL
+from .http_mock import MockHTTP
 
 
 async def _start_connection(hass):

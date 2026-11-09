@@ -10,12 +10,11 @@ from unittest.mock import MagicMock
 
 import aiohttp
 import pytest
-from .http_mock import MockHTTP
-from .http_mock import normalize_url
 
 from custom_components.blinds_control.nice_protocol import NiceController
 
 from .conftest import BASE_URL
+from .http_mock import MockHTTP, normalize_url
 
 CLI_PATH = Path(__file__).resolve().parent.parent / "blinds"
 DEVLST = f"{BASE_URL}/cgi/devlst.xml"

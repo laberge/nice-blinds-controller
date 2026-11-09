@@ -40,12 +40,12 @@ class NiceController:
             timeout = aiohttp.ClientTimeout(total=self.http_config.get("timeout", 10))
             self._http_session = aiohttp.ClientSession(timeout=timeout)
 
-    def _auth(self) -> aiohttp.BasicAuth | None:
+    def _auth_headers(self) -> dict[str, str] | None:
         """Build basic auth from config, or None if no credentials."""
         username = self.http_config.get("username")
         password = self.http_config.get("password")
         if username and password:
-            return aiohttp.BasicAuth(username, password)
+            return {"Authorization": aiohttp.encode_basic_auth(username, password)}
         return None
 
     def _url(self, path: str) -> str:
@@ -61,7 +61,7 @@ class NiceController:
         """
         await self._ensure_initialized()
 
-        async with self._http_session.get(self._url(path), auth=self._auth()) as response:
+        async with self._http_session.get(self._url(path), headers=self._auth_headers()) as response:
             response.raise_for_status()
             text = await response.text()
 
@@ -111,7 +111,7 @@ class NiceController:
         await self._ensure_initialized()
         url = self._url(f"cgi/devcmd.xml?adr={adr}&ept={ept}&cmd={cmd}")
         _LOGGER.debug("Sending command '%s' to device %s", command, device_id)
-        async with self._http_session.get(url, auth=self._auth()) as response:
+        async with self._http_session.get(url, headers=self._auth_headers()) as response:
             response.raise_for_status()
 
     async def send_group_command(self, group_num: str, command: str) -> None:
@@ -124,7 +124,7 @@ class NiceController:
         await self._ensure_initialized()
         url = self._url(f"cgi/grpcmd.xml?req=R&num={group_num}&dat={dat}")
         _LOGGER.debug("Sending command '%s' to group %s", command, group_num)
-        async with self._http_session.get(url, auth=self._auth()) as response:
+        async with self._http_session.get(url, headers=self._auth_headers()) as response:
             response.raise_for_status()
             text = await response.text()
 
@@ -142,7 +142,7 @@ class NiceController:
 
         base_url = self.http_config.get("base_url", "")
         try:
-            async with self._http_session.get(base_url, auth=self._auth()) as response:
+            async with self._http_session.get(base_url, headers=self._auth_headers()) as response:
                 return response.status < 500
         except Exception as err:
             _LOGGER.error("Connection test failed: %s", err)

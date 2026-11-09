@@ -1,11 +1,13 @@
 """Tests for the NiceController HTTP protocol layer."""
+import base64
+
 import aiohttp
 import pytest
-from .http_mock import MockHTTP
 
 from custom_components.blinds_control.nice_protocol import NiceController
 
 from .conftest import BASE_URL
+from .http_mock import MockHTTP
 
 
 def make_controller(http_config):
@@ -62,7 +64,9 @@ async def test_send_command_builds_url(http_config, command, code):
     with MockHTTP() as m:
         m.get(url, status=200, body="<r/>")
         await controller.send_command("1,0F", command)
-        m.assert_called_once_with(url, auth=aiohttp.BasicAuth("user", "pass"))
+        m.assert_called_once_with(
+            url, headers={"Authorization": "Basic " + base64.b64encode(b"user:pass").decode()}
+        )
     await controller.cleanup()
 
 
@@ -139,9 +143,9 @@ async def test_cleanup_closes_session(http_config):
     assert controller._http_session is None
 
 
-def test_auth_none_without_credentials():
+def test_auth_headers_none_without_credentials():
     controller = NiceController({"base_url": BASE_URL})
-    assert controller._auth() is None
+    assert controller._auth_headers() is None
 
 
 def test_url_strips_trailing_slash():

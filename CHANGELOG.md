@@ -5,6 +5,11 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.10] - 2026-11-09
+
+### Changed
+- **Auth**: The controller's basic-auth header is now built with `aiohttp.encode_basic_auth` instead of the deprecated `aiohttp.BasicAuth` (removed in aiohttp 4.0). Safe now that Home Assistant 2026.9+ (the minimum) ships aiohttp 3.14.
+
 ## [1.9.9] - 2026-11-09
 
 ### Fixed
