@@ -19,7 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create main controller device
     device_registry = dr.async_get(hass)
-    device_registry.async_get_or_create(
+    controller_device = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name="Nice Controller",
@@ -27,6 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         model="IT4WiFi / MyNice",
         configuration_url=entry.data.get("http_base_url"),
     )
+    hass.data[DOMAIN][entry.entry_id]["controller_device_id"] = controller_device.id
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

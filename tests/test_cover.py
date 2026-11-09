@@ -1,6 +1,8 @@
 """Tests for the cover entities and status coordinator."""
 from unittest.mock import AsyncMock
 
+from awesomeversion import AwesomeVersion
+from homeassistant.const import __version__ as HA_VERSION
 import pytest
 
 from custom_components.blinds_control.cover import (
@@ -121,3 +123,60 @@ async def test_group_cover_commands(hass):
     controller.send_group_command.assert_awaited_with("1", "close")
     await group.async_stop_cover()
     controller.send_group_command.assert_awaited_with("1", "stop")
+
+
+@pytest.mark.skipif(
+    AwesomeVersion(HA_VERSION) < AwesomeVersion("2026.9.0"),
+    reason="DeviceInfo.via_device_id needs HA 2026.9+; the Python 3.13 test env caps HA at 2026.2",
+)
+async def test_setup_adds_every_entity_linked_to_controller(hass, caplog):
+    """Every configured device and group must be added (HA 2026.9+ rejects via_device)."""
+    from unittest.mock import patch
+
+    from homeassistant.helpers import device_registry as dr
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.blinds_control import DOMAIN
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "http_base_url": "http://controller.test",
+            "http_username": "user",
+            "http_password": "pass",
+            "devices": [
+                {"id": "1,01", "name": "MBA 3", "module": "Era Mat MA (1,1)", "adr": "1", "ept": "01"},
+                {"id": "1,02", "name": "MBA 1", "module": "Era Mat MA (1,2)", "adr": "1", "ept": "02"},
+            ],
+            "groups": [{"num": "1", "name": "Office"}],
+        },
+    )
+    entry.add_to_hass(hass)
+    status = {
+        "1,01": {"status_code": "05", "position": 0},
+        "1,02": {"status_code": "04", "position": 100},
+    }
+    with patch(
+        "custom_components.blinds_control.cover.NiceController.get_all_device_status",
+        return_value=status,
+    ), patch("custom_components.blinds_control.cover.NiceController.cleanup"):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        states = {s.entity_id: s.state for s in hass.states.async_all("cover")}
+        assert states == {
+            "cover.mba_3": "closed",
+            "cover.mba_1": "open",
+            "cover.office_group_office": "unknown",
+        }
+
+        registry = dr.async_get(hass)
+        devices = dr.async_entries_for_config_entry(registry, entry.entry_id)
+        (controller,) = [d for d in devices if (DOMAIN, entry.entry_id) in d.identifiers]
+        children = [d for d in devices if d.id != controller.id]
+        assert len(children) == 3
+        assert all(d.via_device_id == controller.id for d in children)
+        assert "via_device" not in caplog.text
+
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()

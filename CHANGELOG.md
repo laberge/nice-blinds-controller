@@ -5,6 +5,14 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.8] - 2026-11-09
+
+### Fixed
+- **A blind showing "unavailable" on Home Assistant 2026.11** (e.g. the first device, Master Bath 3) even though the controller reports it. HA 2026.9+ deprecated `DeviceInfo(via_device=...)` and, depending on the call stack, raises instead of warning, so the first entity was never added. Entities now link to the controller device with `via_device_id`.
+
+### Changed
+- Minimum Home Assistant version is now 2026.9.0.
+
 ## [1.9.7] - 2026-10-12
 
 ### Changed

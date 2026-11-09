@@ -63,6 +63,7 @@ async def async_setup_entry(
             device_id=device["id"],
             move_time=move_time,
             entry_id=config_entry.entry_id,
+            controller_device_id=entry_runtime["controller_device_id"],
             device_info=device,
         )
         entities.append(entity)
@@ -81,6 +82,7 @@ async def async_setup_entry(
                 controller=controller,
                 coordinator=coordinator,
                 entry_id=config_entry.entry_id,
+                controller_device_id=entry_runtime["controller_device_id"],
             )
             entities.append(group_entity)
 
@@ -128,6 +130,7 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
         device_id: str,
         move_time: int = 30,
         entry_id: str | None = None,
+        controller_device_id: str | None = None,
         device_info: dict | None = None,
     ) -> None:
         """Initialize the blind."""
@@ -146,7 +149,7 @@ class BlindsCover(CoordinatorEntity[dict[str, dict[str, Any]]], CoverEntity):
                 manufacturer="Nice S.p.A.",
                 model=device_info.get("module", "Nice Blind Motor"),
                 sw_version=device_info.get("adr", "1"),
-                via_device=(DOMAIN, entry_id),
+                via_device_id=controller_device_id,
             )
 
     @property
@@ -269,6 +272,7 @@ class BlindsGroupCover(
         controller: NiceController,
         coordinator: NiceStatusCoordinator,
         entry_id: str | None = None,
+        controller_device_id: str | None = None,
     ) -> None:
         """Initialize the blind group using controller's native groups."""
         super().__init__(coordinator)
@@ -284,7 +288,7 @@ class BlindsGroupCover(
                 name=f"{name} (Group)",
                 manufacturer="Nice S.p.A.",
                 model="Controller Group",
-                via_device=(DOMAIN, entry_id),
+                via_device_id=controller_device_id,
             )
 
     @property
