@@ -31,6 +31,7 @@ Version is the single source of truth in `custom_components/blinds_control/manif
 The integration has three layers:
 
 1. **`nice_protocol.py` — `NiceController`**: the only thing that speaks HTTP to the controller. Owns a single shared `aiohttp.ClientSession` (lazily created via `_ensure_initialized`, closed in `cleanup`). All controller knowledge lives here:
+   - Basic auth is sent as UTF-8 (`aiohttp.encode_basic_auth`, same as the CLI's `_auth_headers`); pre-1.9.10 `BasicAuth` used Latin-1, so non-ASCII credentials changed bytes.
    - CGI endpoints: `cgi/devlst.xml` (device + status list), `cgi/grplst.xml` (groups), `cgi/devcmd.xml?adr=&ept=&cmd=` (single device command), `cgi/grpcmd.xml?req=R&num=&dat=` (group command).
    - Command codes: `stop=02`, `open=03`, `close=04` (group variant pads to `02000000`/`03000000`/`04000000`).
    - **Device ID format is `"adr,ept"` where `adr` is decimal and `ept` is uppercase hex** — the controller XML reports `adr`/`ept` as hex, so discovery converts `adr` hex→decimal but keeps `ept` as hex. Get this conversion wrong and commands silently hit the wrong device.
@@ -42,7 +43,7 @@ The integration has three layers:
 
 3. **`config_flow.py` — setup + options**: multi-step config flow (`http_connection` → `select_devices` → `review_groups`). Discovered devices/groups are stored **in the config entry's `data`** (not fetched at runtime), so adding devices/groups on the controller requires the Options flow's **Refresh Devices & Groups** action, which re-discovers and calls `async_reload`.
 
-`__init__.py` registers the controller device and forwards the `cover` platform. `hass.data[DOMAIN][entry_id]` holds `config`, and (after `cover` setup) `controller` + `coordinator`.
+`__init__.py` registers the controller device and forwards the `cover` platform. `hass.data[DOMAIN][entry_id]` holds `config` and `controller_device_id` (the controller's device-registry id, which `cover` passes as `via_device_id`; HA 2026.9+ rejects the old `via_device`), and (after `cover` setup) `controller` + `coordinator`.
 
 ## Conventions
 

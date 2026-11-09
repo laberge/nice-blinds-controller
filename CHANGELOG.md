@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Auth**: The controller's basic-auth header is now built with `aiohttp.encode_basic_auth` instead of the deprecated `aiohttp.BasicAuth` (removed in aiohttp 4.0). Safe now that Home Assistant 2026.9+ (the minimum) ships aiohttp 3.14.
+- **Credentials are now sent as UTF-8** (`BasicAuth` used Latin-1), matching the `blinds` CLI. ASCII usernames/passwords are unaffected; if yours has non-ASCII characters (e.g. `é`, `ü`) and the controller now rejects it, change it to ASCII on the controller.
 
 ## [1.9.9] - 2026-11-09
 
