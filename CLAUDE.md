@@ -32,14 +32,14 @@ The integration has three layers:
 
 1. **`nice_protocol.py` — `NiceController`**: the only thing that speaks HTTP to the controller. Owns a single shared `aiohttp.ClientSession` (lazily created via `_ensure_initialized`, closed in `cleanup`). All controller knowledge lives here:
    - Basic auth is sent as UTF-8 (`aiohttp.encode_basic_auth`, same as the CLI's `_auth_headers`); pre-1.9.10 `BasicAuth` used Latin-1, so non-ASCII credentials changed bytes.
-   - CGI endpoints: `cgi/devlst.xml` (device + status list), `cgi/grplst.xml` (groups), `cgi/devcmd.xml?adr=&ept=&cmd=` (single device command), `cgi/grpcmd.xml?req=R&num=&dat=` (group command).
+   - CGI endpoints: `cgi/devlst.xml` (device + status list), `cgi/grplst.xml` (groups), `cgi/grpitm.xml?num=` (one group's members), `cgi/devcmd.xml?adr=&ept=&cmd=` (single device command), `cgi/grpcmd.xml?req=R&num=&dat=` (group command).
    - Command codes: `stop=02`, `open=03`, `close=04` (group variant pads to `02000000`/`03000000`/`04000000`).
    - **Device ID format is `"adr,ept"` where `adr` is decimal and `ept` is uppercase hex** — the controller XML reports `adr`/`ept` as hex, so discovery converts `adr` hex→decimal but keeps `ept` as hex. Get this conversion wrong and commands silently hit the wrong device.
    - Position: `pos="255"` means unknown/None; otherwise 0–100. Status code `02`=opening, `03`=closing, `04`=open limit, `05`=closed limit.
 
 2. **`cover.py` — entities + polling**: `NiceStatusCoordinator` (a `DataUpdateCoordinator`) polls `get_all_device_status()` every 10s; all entities are `CoordinatorEntity` reading from `coordinator.data` (no per-entity polling). Two entity types:
    - `BlindsCover`: a single motor. Supports open/close/stop/set_position. Position control is **time-based dead reckoning** — it issues open/close, `asyncio.sleep`s for `move_time * (delta/100)`, then stop. There is no closed-loop seeking. `move_time` is a config option (default 30s).
-   - `BlindsGroupCover`: maps to a controller's **native hardware group** (`send_group_command`). Groups have no position feedback (`is_*` return False/None) and execute whatever actions are pre-programmed on the controller — the integration cannot introspect group membership.
+   - `BlindsGroupCover`: maps to a controller's **native hardware group** (`send_group_command`). Groups have no position feedback (`is_*` return False/None) and execute whatever actions are pre-programmed on the controller. A group command is one bus broadcast that a motor can miss, so `GROUP_VERIFY_DELAY` (6s) after each one a background task calls `NiceController.resend_to_unresponsive`: it reads membership from `cgi/grpitm.xml` (little-endian bitmask in `dat`, bit = endpoint + 32), compares each member's status with the pre-command snapshot, and sends the command directly to members that did not react. A new command on the group cancels the pending check.
 
 3. **`config_flow.py` — setup + options**: multi-step config flow (`http_connection` → `select_devices` → `review_groups`). Discovered devices/groups are stored **in the config entry's `data`** (not fetched at runtime), so adding devices/groups on the controller requires the Options flow's **Refresh Devices & Groups** action, which re-discovers and calls `async_reload`.
 
@@ -48,4 +48,4 @@ The integration has three layers:
 ## Conventions
 
 - Groups are managed entirely in the Nice controller's web UI (`/grp_list.htm`); this codebase only reads and triggers them. Don't add group-membership editing here.
-- The CLI scripts duplicate the protocol logic from `nice_protocol.py` deliberately (they must run without Home Assistant). When changing endpoints/command codes, update both.
+- The CLI scripts duplicate the protocol logic from `nice_protocol.py` deliberately (they must run without Home Assistant). When changing endpoints/command codes or the group member check, update both.

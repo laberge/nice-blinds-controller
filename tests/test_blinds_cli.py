@@ -34,6 +34,7 @@ def cli(tmp_path, monkeypatch):
     """The CLI module with retries instant and diagnostics logged to tmp."""
     module = _load_cli()
     monkeypatch.setattr(module, "RETRY_BACKOFF", 0)
+    monkeypatch.setattr(module, "GROUP_VERIFY_DELAY", 0)
     monkeypatch.setattr(module, "DIAG_LOG", str(tmp_path / "blinds-cli.log"))
     return module
 
@@ -186,6 +187,46 @@ async def test_send_group_command_unknown_or_disabled_group(cli, group_list_xml,
         assert await cli.send_group_command("Disabled", "open", BASE_URL, USER, PASS) is False
         assert not any("grpcmd" in u for u in requested_urls(m))
     assert "Group 'Disabled' not found" in capsys.readouterr().out
+
+
+async def test_group_members_match_integration(cli, http_config, group_item_xml):
+    url = f"{BASE_URL}/cgi/grpitm.xml?num=1"
+    with MockHTTP() as m:
+        m.get(url, status=200, body=group_item_xml, repeat=True)
+        cli_members = await cli.get_group_members(BASE_URL, USER, PASS, "1")
+        controller = NiceController(http_config)
+        integration_members = await controller.get_group_members("1")
+        await controller.cleanup()
+    assert cli_members == integration_members == ["1,01", "1,0F"]
+
+
+async def test_group_command_resends_to_member_that_missed(cli, group_list_xml, group_item_xml, device_list_xml, capsys):
+    """"MBA 3" is still closed after the group open, so it gets a direct open."""
+    resend = f"{BASE_URL}/cgi/devcmd.xml?adr=1&ept=01&cmd=03"
+    with MockHTTP() as m:
+        m.get(GRPLST, status=200, body=group_list_xml)
+        m.get(DEVLST, status=200, body=device_list_xml, repeat=True)
+        m.get(f"{BASE_URL}/cgi/grpcmd.xml?req=R&num=1&dat=03000000", status=200, body="<nice><result>0</result></nice>")
+        m.get(f"{BASE_URL}/cgi/grpitm.xml?num=1", status=200, body=group_item_xml)
+        m.get(resend, status=200, body="<ok/>")
+        assert await cli.send_group_command("Office", "open", BASE_URL, USER, PASS) is True
+        assert was_requested(m, resend)
+        assert not any("ept=0F" in u for u in requested_urls(m))  # already open
+    assert "MBA 3 did not react" in capsys.readouterr().out
+    assert "MBA 3 (1,01) did not react" in Path(cli.DIAG_LOG).read_text()
+
+
+async def test_group_command_all_reacted(cli, group_list_xml, group_item_xml, device_list_xml, capsys):
+    moved = device_list_xml.replace('sta="05" pos="0"', 'sta="03" pos="60"')
+    with MockHTTP() as m:
+        m.get(GRPLST, status=200, body=group_list_xml)
+        m.get(DEVLST, status=200, body=device_list_xml.replace('sta="05" pos="0"', 'sta="04" pos="100"'))
+        m.get(f"{BASE_URL}/cgi/grpcmd.xml?req=R&num=1&dat=04000000", status=200, body="<nice><result>0</result></nice>")
+        m.get(f"{BASE_URL}/cgi/grpitm.xml?num=1", status=200, body=group_item_xml)
+        m.get(DEVLST, status=200, body=moved.replace('sta="04" pos="100"', 'sta="03" pos="55"'))
+        assert await cli.send_group_command("Office", "close", BASE_URL, USER, PASS) is True
+        assert not any("devcmd" in u for u in requested_urls(m))
+    assert "All blinds in the group reacted" in capsys.readouterr().out
 
 
 # --- transient-connection retry -------------------------------------------------

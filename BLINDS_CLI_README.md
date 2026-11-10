@@ -52,7 +52,7 @@ Device names come from your controller's configuration and are matched case-inse
 ./blinds stop-group "Kitchen"  # Stop all blinds in a group
 ```
 
-Group commands execute at the hardware level, so all member devices move simultaneously.
+Group commands execute at the hardware level, so all member devices move simultaneously. About six seconds later the CLI checks that every member reacted and sends the command directly to any blind that did not (logged in `~/.blinds-cli.log`).
 
 ### Shell aliases (optional)
 

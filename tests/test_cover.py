@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from custom_components.blinds_control import cover as cover_module
 from custom_components.blinds_control.cover import (
     BlindsCover,
     BlindsGroupCover,
@@ -114,8 +115,7 @@ async def test_set_position_moves_then_stops(hass, monkeypatch):
     assert ("1,01", "stop") in commands
 
 
-async def test_group_cover_commands(hass):
-    coordinator, controller = make_coordinator(hass)
+def make_group(hass, coordinator, controller):
     group = BlindsGroupCover(
         name="Office",
         unique_id="uid-grp",
@@ -124,6 +124,15 @@ async def test_group_cover_commands(hass):
         coordinator=coordinator,
         entry_id="entry",
     )
+    group.hass = hass
+    return group
+
+
+async def test_group_cover_commands(hass, monkeypatch):
+    monkeypatch.setattr(cover_module, "GROUP_VERIFY_DELAY", 0)
+    coordinator, controller = make_coordinator(hass)
+    controller.resend_to_unresponsive.return_value = []
+    group = make_group(hass, coordinator, controller)
     assert group.current_cover_position is None
     assert group.available is True
 
@@ -133,6 +142,36 @@ async def test_group_cover_commands(hass):
     controller.send_group_command.assert_awaited_with("1", "close")
     await group.async_stop_cover()
     controller.send_group_command.assert_awaited_with("1", "stop")
+    await group._verify_task
+
+
+async def test_group_cover_resends_to_members_that_missed(hass, monkeypatch, caplog):
+    monkeypatch.setattr(cover_module, "GROUP_VERIFY_DELAY", 0)
+    before = {"1,01": {"status_code": "05", "position": 0}}
+    coordinator, controller = make_coordinator(hass, data=before)
+    controller.resend_to_unresponsive.return_value = ["1,01"]
+    group = make_group(hass, coordinator, controller)
+
+    await group.async_open_cover()
+    await group._verify_task
+
+    controller.resend_to_unresponsive.assert_awaited_once_with("1", "open", before)
+    assert "1,01 did not react to 'open'" in caplog.text
+
+
+async def test_group_cover_new_command_cancels_pending_check(hass, monkeypatch):
+    """A stop right after an open must not be followed by a re-sent open."""
+    monkeypatch.setattr(cover_module, "GROUP_VERIFY_DELAY", 0.05)
+    coordinator, controller = make_coordinator(hass)
+    controller.resend_to_unresponsive.return_value = []
+    group = make_group(hass, coordinator, controller)
+
+    await group.async_open_cover()
+    await group.async_stop_cover()
+    await group._verify_task
+
+    controller.resend_to_unresponsive.assert_awaited_once()
+    assert controller.resend_to_unresponsive.await_args.args[1] == "stop"
 
 
 async def test_setup_adds_every_entity_linked_to_controller(hass, caplog):

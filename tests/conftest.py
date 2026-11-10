@@ -57,3 +57,13 @@ def empty_device_list_xml():
 <devlst>
   <device installed="0" productName="Era Mat MA" adr="01" ept="01" desc="Spare" sta="00" pos="255"/>
 </devlst>"""
+
+
+@pytest.fixture
+def group_item_xml():
+    """Group 1 as the controller reports it: members are endpoints 0x01 and 0x0F of adr 01."""
+    return """<?xml version="1.0"?>
+<nice><data><group num="1" enabled="1" desc="Office">
+  <command idx="1" adr="00" ept="FF" sub="00" evt="C2" dat="0000000000000000000000000000000000000000" />
+  <command idx="2" adr="01" ept="FF" sub="00" evt="C2" dat="0000000002800000000000000000000000000000" />
+</group></data></nice>"""

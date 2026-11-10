@@ -4,7 +4,7 @@ import base64
 import aiohttp
 import pytest
 
-from custom_components.blinds_control.nice_protocol import NiceController
+from custom_components.blinds_control.nice_protocol import NiceController, unresponsive_members
 
 from .conftest import BASE_URL
 from .http_mock import MockHTTP
@@ -116,6 +116,57 @@ async def test_send_group_command(http_config, command, dat):
         m.get(url, status=200, body="<grpcmd><result>0</result></grpcmd>")
         await controller.send_group_command("1", command)
         m.assert_called_once()
+    await controller.cleanup()
+
+
+async def test_get_group_members_decodes_bitmask(http_config, group_item_xml):
+    controller = make_controller(http_config)
+    with MockHTTP() as m:
+        m.get(f"{BASE_URL}/cgi/grpitm.xml?num=1", status=200, body=group_item_xml)
+        assert await controller.get_group_members("1") == ["1,01", "1,0F"]
+    await controller.cleanup()
+
+
+def _status(code, position):
+    return {"status_code": code, "position": position}
+
+
+@pytest.mark.parametrize(
+    ("command", "before", "after", "missed"),
+    [
+        # Still closed after "open": missed it.
+        ("open", _status("05", 0), _status("05", 0), True),
+        ("open", _status("05", 0), _status("02", 12), False),
+        # Already at the target: nothing to do.
+        ("open", _status("04", 100), _status("04", 100), False),
+        ("close", _status("04", 100), _status("04", 100), True),
+        ("close", _status("04", 100), _status("03", 80), False),
+        # Stopped part-way by someone else since the command: it did react.
+        ("open", _status("05", 0), _status("01", 30), False),
+        ("stop", _status("02", 10), _status("02", 40), True),
+        ("stop", _status("02", 10), _status("01", 40), False),
+    ],
+)
+def test_unresponsive_members(command, before, after, missed):
+    result = unresponsive_members(command, ["1,01"], {"1,01": before}, {"1,01": after})
+    assert result == (["1,01"] if missed else [])
+
+
+def test_unresponsive_members_skips_devices_without_status():
+    assert unresponsive_members("open", ["1,01", "1,02"], {}, {"1,01": _status("05", 0)}) == []
+
+
+async def test_resend_to_unresponsive(http_config, device_list_xml, group_item_xml):
+    """Only the member that ignored the group command gets a direct command."""
+    controller = make_controller(http_config)
+    before = {"1,01": _status("05", 0), "1,0F": _status("05", 0)}
+    resend = f"{BASE_URL}/cgi/devcmd.xml?adr=1&ept=01&cmd=03"
+    with MockHTTP() as m:
+        m.get(f"{BASE_URL}/cgi/grpitm.xml?num=1", status=200, body=group_item_xml)
+        m.get(f"{BASE_URL}/cgi/devlst.xml", status=200, body=device_list_xml)
+        m.get(resend, status=200, body="<ok/>")
+        assert await controller.resend_to_unresponsive("1", "open", before) == ["1,01"]
+        assert len(m.requests) == 3
     await controller.cleanup()
 
 

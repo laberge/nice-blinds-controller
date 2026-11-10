@@ -23,6 +23,12 @@ CONNECT_RETRIES = 3
 RETRY_BACKOFF = 0.4  # seconds, multiplied by the attempt number
 DIAG_LOG = os.path.expanduser("~/.blinds-cli.log")
 
+# A group command is one broadcast on the motor bus, so a motor that misses it
+# never moves. After this many seconds each member's status is compared with
+# what it was before, and the command is re-sent directly to any that ignored it.
+# The controller's status can trail a motor by about five seconds.
+GROUP_VERIFY_DELAY = 6
+
 
 def _diag(msg: str):
     import datetime
@@ -226,6 +232,56 @@ async def send_command(base_url: str, username: str, password: str, device_id: s
             return True
 
 
+async def get_group_members(base_url: str, username: str, password: str, group_num: str):
+    """Return the "adr,ept" IDs of the devices in a controller group."""
+    xml_content = await _request_text(f"{base_url.rstrip('/')}/cgi/grpitm.xml?num={group_num}", username, password)
+
+    members = []
+    for row in ET.fromstring(xml_content).findall('.//command'):
+        try:
+            adr_dec = int(row.get('adr', '0'), 16)
+            mask = int.from_bytes(bytes.fromhex(row.get('dat', '')), 'little')
+        except ValueError:
+            continue
+        # Membership is a little-endian bitmask; an endpoint's bit is its number + 32.
+        members.extend(f"{adr_dec},{bit - 32:02X}" for bit in range(32, mask.bit_length()) if mask >> bit & 1)
+    return members
+
+
+def unresponsive_members(command: str, members: list, before: dict, after: dict):
+    """Return the group members (status dicts) that show no reaction to a group command."""
+    target = {"open": "100", "close": "0"}.get(command)
+    missed = []
+    for device_id in members:
+        now = after.get(device_id)
+        if now is None:
+            continue
+        if command == "stop":
+            if now['sta_code'] in ("02", "03"):
+                missed.append(now)
+            continue
+        was = before.get(device_id)
+        if was is None or now['pos_raw'] == target:
+            continue
+        if (was['sta_code'], was['pos_raw']) == (now['sta_code'], now['pos_raw']):
+            missed.append(now)
+    return missed
+
+
+async def _status_by_id(base_url: str, username: str, password: str):
+    return {d['id']: d for d in await get_device_status(base_url, username, password)}
+
+
+async def resend_to_unresponsive(group_num: str, command: str, before: dict, base_url: str, username: str, password: str):
+    """Send the command directly to group members that ignored the group command."""
+    members = await get_group_members(base_url, username, password, group_num)
+    after = await _status_by_id(base_url, username, password)
+    missed = unresponsive_members(command, members, before, after)
+    for device in missed:
+        await send_command(base_url, username, password, device['id'], command)
+    return missed
+
+
 async def send_group_command(group_name: str, command: str, config_url: str, config_user: str, config_pass: str):
     """Send a command to a controller group using native group commands."""
     # Get groups from controller
@@ -290,6 +346,12 @@ async def send_group_command(group_name: str, command: str, config_url: str, con
     # Send group command using controller's native group API
     url = f"{config_url.rstrip('/')}/cgi/grpcmd.xml?req=R&num={group_num}&dat={dat}"
 
+    # Status before the command, to tell afterwards which members reacted.
+    try:
+        before = await _status_by_id(config_url, config_user, config_pass)
+    except Exception:
+        before = None
+
     try:
         xml_content = await _request_text(url, config_user, config_pass)
 
@@ -299,8 +361,21 @@ async def send_group_command(group_name: str, command: str, config_url: str, con
 
         if result == '0':
             print(f"  ✓ Group command sent to controller")
-            print(f"  ✓ Devices in group are executing")
-            print(f"\n  Run './blinds status' to verify results")
+            if before is not None:
+                print(f"  … checking that every blind reacted")
+                await asyncio.sleep(GROUP_VERIFY_DELAY)
+                try:
+                    missed = await resend_to_unresponsive(group_num, command.lower(), before,
+                                                          config_url, config_user, config_pass)
+                except Exception as e:
+                    print(f"  ! Could not check the group's blinds: {e}")
+                else:
+                    for device in missed:
+                        print(f"  ↻ {device['name']} did not react; sent {command.upper()} to it directly")
+                        _diag(f"group {group['name']} {command}: {device['name']} ({device['id']}) "
+                              f"did not react; re-sent directly")
+                    if not missed:
+                        print(f"  ✓ All blinds in the group reacted")
             print(f"{'='*60}\n")
             return True
         else:

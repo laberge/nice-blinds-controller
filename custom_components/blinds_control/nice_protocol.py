@@ -22,8 +22,44 @@ STATUS_CLOSED = "05"
 # The `pos` attribute value meaning "position unknown".
 POSITION_UNKNOWN = "255"
 
+# Position a device ends at for each command.
+TARGET_POSITION = {"open": 100, "close": 0}
+
+# Group membership is a little-endian bitmask in the grpitm.xml `dat`
+# attribute; an endpoint's bit index is its number plus this offset.
+GROUP_MASK_BIT_OFFSET = 32
+
 # Markers that indicate the controller answered with its login page.
 _HTML_MARKERS = ("<!doctype html", "<html", "login", "password")
+
+
+def unresponsive_members(
+    command: str,
+    members: list[str],
+    before: dict[str, dict[str, Any]],
+    after: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Return the group members that show no reaction to a group command.
+
+    A group command is one broadcast on the motor bus, so a motor that misses
+    it never moves and nothing reports the miss. `before` and `after` are
+    status maps taken before the command and a few seconds after it.
+    """
+    missed = []
+    for device_id in members:
+        now = after.get(device_id)
+        if now is None:
+            continue
+        if command == "stop":
+            if now["status_code"] in (STATUS_OPENING, STATUS_CLOSING):
+                missed.append(device_id)
+            continue
+        was = before.get(device_id)
+        if was is None or now["position"] == TARGET_POSITION[command]:
+            continue
+        if (was["status_code"], was["position"]) == (now["status_code"], now["position"]):
+            missed.append(device_id)
+    return missed
 
 
 class NiceController:
@@ -135,6 +171,40 @@ class NiceController:
             return
         if result != "0":
             _LOGGER.warning("Group command '%s' returned result: %s", command, result)
+
+    async def get_group_members(self, group_num: str) -> list[str]:
+        """Return the "adr,ept" IDs of the devices in a controller group."""
+        root = await self._fetch_xml(f"cgi/grpitm.xml?num={group_num}")
+
+        members = []
+        for row in root.findall(".//command"):
+            try:
+                adr_dec = int(row.get("adr", "0"), 16)
+                mask = int.from_bytes(bytes.fromhex(row.get("dat", "")), "little")
+            except ValueError:
+                _LOGGER.debug("Skipping unreadable row in group %s", group_num)
+                continue
+            members.extend(
+                f"{adr_dec},{bit - GROUP_MASK_BIT_OFFSET:02X}"
+                for bit in range(GROUP_MASK_BIT_OFFSET, mask.bit_length())
+                if mask >> bit & 1
+            )
+        return members
+
+    async def resend_to_unresponsive(
+        self, group_num: str, command: str, before: dict[str, dict[str, Any]]
+    ) -> list[str]:
+        """Send `command` directly to group members that ignored a group command.
+
+        Call a few seconds after send_group_command, with the status map from
+        before it. Returns the device IDs the command was re-sent to.
+        """
+        members = await self.get_group_members(group_num)
+        after = await self.get_all_device_status()
+        missed = unresponsive_members(command, members, before, after)
+        for device_id in missed:
+            await self.send_command(device_id, command)
+        return missed
 
     async def test_connection(self) -> bool:
         """Return True if the controller base URL is reachable."""

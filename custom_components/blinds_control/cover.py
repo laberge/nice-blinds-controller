@@ -26,6 +26,10 @@ from .nice_protocol import STATUS_CLOSING, STATUS_OPENING, NiceController
 
 _LOGGER = logging.getLogger(__name__)
 
+# Seconds to wait after a group command before checking that every member
+# reacted. The controller's status can trail a motor by about five seconds.
+GROUP_VERIFY_DELAY = 6
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -281,6 +285,7 @@ class BlindsGroupCover(
         self._group_num = group_num
         self._controller = controller
         self._attr_should_poll = False
+        self._verify_task: asyncio.Task | None = None
 
         if entry_id:
             self._attr_device_info = DeviceInfo(
@@ -316,32 +321,50 @@ class BlindsGroupCover(
         """Return None - groups don't track state."""
         return None
 
-    async def async_open_cover(self, **kwargs: Any) -> None:
-        """Open all covers in the group using controller's native group command."""
-        _LOGGER.debug("Opening controller group: %s (num: %s)", self.name, self._group_num)
+    async def _send(self, command: str) -> None:
+        """Send a group command, then check that every member reacted."""
+        _LOGGER.debug("Sending '%s' to controller group: %s (num: %s)", command, self.name, self._group_num)
+        if self._verify_task is not None:
+            self._verify_task.cancel()
+        before = self.coordinator.data or {}
         try:
-            await self._controller.send_group_command(self._group_num, "open")
+            await self._controller.send_group_command(self._group_num, command)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            _LOGGER.error("Error opening group %s: %s", self.name, err)
+            _LOGGER.error("Error sending '%s' to group %s: %s", command, self.name, err)
             raise
+        self._verify_task = self.hass.async_create_background_task(
+            self._verify(command, before), f"blinds_control verify group {self._group_num}"
+        )
+
+    async def _verify(self, command: str, before: dict[str, dict[str, Any]]) -> None:
+        """Re-send the command to members that missed the group broadcast."""
+        await asyncio.sleep(GROUP_VERIFY_DELAY)
+        try:
+            missed = await self._controller.resend_to_unresponsive(self._group_num, command, before)
+        except Exception as err:
+            _LOGGER.debug("Could not verify group %s: %s", self.name, err)
+            return
+        if missed:
+            _LOGGER.warning(
+                "Group %s: %s did not react to '%s'; sent it to them directly",
+                self.name, ", ".join(missed), command,
+            )
+            await self.coordinator.async_request_refresh()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel a pending member check."""
+        if self._verify_task is not None:
+            self._verify_task.cancel()
+
+    async def async_open_cover(self, **kwargs: Any) -> None:
+        """Open all covers in the group using controller's native group command."""
+        await self._send("open")
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close all covers in the group using controller's native group command."""
-        _LOGGER.debug("Closing controller group: %s (num: %s)", self.name, self._group_num)
-        try:
-            await self._controller.send_group_command(self._group_num, "close")
-            await self.coordinator.async_request_refresh()
-        except Exception as err:
-            _LOGGER.error("Error closing group %s: %s", self.name, err)
-            raise
+        await self._send("close")
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop all covers in the group using controller's native group command."""
-        _LOGGER.debug("Stopping controller group: %s (num: %s)", self.name, self._group_num)
-        try:
-            await self._controller.send_group_command(self._group_num, "stop")
-            await self.coordinator.async_request_refresh()
-        except Exception as err:
-            _LOGGER.error("Error stopping group %s: %s", self.name, err)
-            raise
+        await self._send("stop")

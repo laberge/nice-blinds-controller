@@ -54,7 +54,7 @@ Blinds support **set position (0–100%)**, but the Nice controller has no posit
 
 ### Groups
 
-Groups are created and managed in the **Nice controller's web UI** (`http://<controller-ip>/grp_list.htm`), not in this integration. Each enabled group appears as its own cover entity that triggers the controller's native group for simultaneous control of its members. Groups have no position feedback — they only open/close/stop.
+Groups are created and managed in the **Nice controller's web UI** (`http://<controller-ip>/grp_list.htm`), not in this integration. Each enabled group appears as its own cover entity that triggers the controller's native group for simultaneous control of its members. Groups have no position feedback — they only open/close/stop. A few seconds after each group command the integration checks that every member reacted and sends the command directly to any blind that did not; each such re-send is logged as a warning.
 
 ## Usage
 

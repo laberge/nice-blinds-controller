@@ -5,6 +5,11 @@ All notable changes to the Nice Blinds Controller integration will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.13] - 2026-11-10
+
+### Fixed
+- **A blind that ignores a group command now gets the command directly.** A controller group is a single broadcast on the motor bus, so a motor that misses it never moves and nothing reports the miss. About six seconds after a group open/close/stop, the integration and the `blinds` CLI compare each member's status with what it was before and re-send the command to any member that did not react and is not already at the target. Membership is read from the controller (`cgi/grpitm.xml`) each time. Every re-send is logged as a warning in Home Assistant and in `~/.blinds-cli.log`. The CLI's group commands now take about six seconds longer.
+
 ## [1.9.12] - 2026-11-09
 
 ### Changed
